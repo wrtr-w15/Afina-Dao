@@ -2,14 +2,14 @@
 CREATE TABLE IF NOT EXISTS categories (
   id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   name VARCHAR(100) NOT NULL UNIQUE,
-  description TEXT,
+  description TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   color VARCHAR(7) DEFAULT '#3B82F6',
   icon VARCHAR(50),
   is_active BOOLEAN DEFAULT TRUE,
   sort_order INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Вставка базовых категорий
 INSERT INTO categories (id, name, description, color, icon, sort_order) VALUES

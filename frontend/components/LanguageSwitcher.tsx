@@ -1,4 +1,3 @@
-import { useTranslation } from 'next-i18next';
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -14,14 +13,15 @@ const languages = [
 ];
 
 export default function LanguageSwitcher() {
-  const { i18n } = useTranslation();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-
-  const currentLanguage = languages.find(lang => lang.code === i18n.language);
+  const [currentLanguage, setCurrentLanguage] = useState(languages[0]);
 
   const handleLanguageChange = (locale: string) => {
-    router.push(router.asPath, router.asPath, { locale });
+    const selectedLang = languages.find(lang => lang.code === locale);
+    if (selectedLang) {
+      setCurrentLanguage(selectedLang);
+    }
     setIsOpen(false);
   };
 
@@ -44,7 +44,7 @@ export default function LanguageSwitcher() {
                 key={language.code}
                 onClick={() => handleLanguageChange(language.code)}
                 className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center space-x-2 ${
-                  i18n.language === language.code ? 'bg-primary-50 text-primary-700' : 'text-gray-700'
+                  currentLanguage.code === language.code ? 'bg-primary-50 text-primary-700' : 'text-gray-700'
                 }`}
               >
                 <span>{language.flag}</span>

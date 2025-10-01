@@ -75,8 +75,23 @@ export default function CategoriesPage() {
     try {
       await deleteCategory(id);
       await loadCategories();
-    } catch (err) {
-      setError('Ошибка при удалении категории');
+      setError(''); // Очищаем предыдущие ошибки при успешном удалении
+    } catch (err: any) {
+      console.log('Delete category error:', err); // Логируем для отладки
+      
+      // Проверяем, если это ошибка о том, что категория используется в проектах
+      if (err.message && err.message.includes('Cannot delete category that is used in projects')) {
+        setError('❌ Нельзя удалить категорию, которая используется в проектах. Используйте кнопку деактивации (👁️) вместо удаления.');
+      } else if (err.status === 400) {
+        setError('❌ Нельзя удалить эту категорию. Возможно, она используется в проектах. Попробуйте деактивировать её.');
+      } else {
+        setError('❌ Ошибка при удалении категории: ' + (err.message || 'Неизвестная ошибка'));
+      }
+      
+      // Автоматически скрываем ошибку через 5 секунд
+      setTimeout(() => {
+        setError('');
+      }, 5000);
     }
   };
 
@@ -196,6 +211,15 @@ export default function CategoriesPage() {
                     title="Редактировать"
                   >
                     <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleCategoryStatus(category)}
+                    className={`${category.isActive ? 'text-orange-600 border-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20' : 'text-green-600 border-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
+                    title={category.isActive ? 'Деактивировать' : 'Активировать'}
+                  >
+                    {category.isActive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                   <Button
                     variant="outline"

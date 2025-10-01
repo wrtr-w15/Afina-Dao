@@ -22,21 +22,19 @@ export default function AdminLayout({
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="flex">
-        {/* Admin Sidebar */}
-        <AdminSidebar 
-          isCollapsed={sidebarCollapsed}
-          onToggle={toggleSidebar}
-        />
+      {/* Admin Sidebar */}
+      <AdminSidebar 
+        isCollapsed={sidebarCollapsed}
+        onToggle={toggleSidebar}
+      />
 
-        {/* Main Content */}
-        <div className="flex-1 bg-white dark:bg-gray-900">
-          <div className="min-h-screen">
-            {/* Page Content */}
-            <main className="p-6">
-              {children}
-            </main>
-          </div>
+      {/* Main Content */}
+      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-12' : 'ml-64'}`}>
+        <div className="min-h-screen bg-white dark:bg-gray-900">
+          {/* Page Content */}
+          <main className="p-6">
+            {children}
+          </main>
         </div>
       </div>
     </div>

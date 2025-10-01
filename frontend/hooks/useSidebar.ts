@@ -78,7 +78,7 @@ export function useSidebar(options: UseSidebarOptions = {}): UseSidebarReturn {
 
   // Actions
   const toggle = useCallback(() => {
-    setCollapsed(prev => !prev);
+    setCollapsed((prev: boolean) => !prev);
   }, []);
 
   const collapse = useCallback(() => {

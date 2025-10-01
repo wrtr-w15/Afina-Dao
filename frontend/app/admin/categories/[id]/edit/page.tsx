@@ -98,7 +98,7 @@ export default function EditCategoryPage() {
 
     try {
       // Валидация
-      if (!formData.name.trim()) {
+      if (!formData.name?.trim()) {
         throw new Error('Название категории обязательно');
       }
 
@@ -119,15 +119,7 @@ export default function EditCategoryPage() {
 
   const colorOptions = CATEGORY_COLORS.map(color => ({
     value: color,
-    label: (
-      <div className="flex items-center space-x-2">
-        <div 
-          className="w-4 h-4 rounded-full border border-gray-300"
-          style={{ backgroundColor: color }}
-        />
-        <span>{color}</span>
-      </div>
-    )
+    label: color // Просто текст, без JSX
   }));
 
   const iconOptions = CATEGORY_ICONS.map(icon => ({
@@ -231,11 +223,25 @@ export default function EditCategoryPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Цвет категории
                 </label>
-                <Select
-                  value={formData.color}
-                  onChange={(value) => handleSelectChange('color', value)}
-                  options={colorOptions}
-                />
+                <div className="grid grid-cols-4 gap-2">
+                  {CATEGORY_COLORS.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, color })}
+                      className={`w-full h-10 rounded-lg border-2 flex items-center justify-center ${
+                        formData.color === color 
+                          ? 'border-blue-500 ring-2 ring-blue-200' 
+                          : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    >
+                      {formData.color === color && (
+                        <span className="text-white text-sm font-bold">✓</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
                 <div className="mt-2 flex items-center space-x-2">
                   <Palette className="h-4 w-4 text-gray-400" />
                   <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -250,7 +256,7 @@ export default function EditCategoryPage() {
                 </label>
                 <Select
                   value={formData.icon}
-                  onChange={(value) => handleSelectChange('icon', value)}
+                  onChange={(e) => handleSelectChange('icon', e.target.value)}
                   options={iconOptions}
                 />
                 <div className="mt-2 flex items-center space-x-2">
@@ -284,7 +290,7 @@ export default function EditCategoryPage() {
                 </div>
                 <Button
                   type="button"
-                  variant={formData.isActive ? "outline" : "default"}
+                  variant={formData.isActive ? "outline" : "primary"}
                   onClick={handleToggleActive}
                   className={`flex items-center space-x-2 ${
                     formData.isActive 

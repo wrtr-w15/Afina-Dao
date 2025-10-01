@@ -99,7 +99,7 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
           Блоки описания
         </h3>
-        <Button onClick={addBlock} size="sm">
+        <Button type="button" onClick={addBlock} size="sm">
           <Plus className="h-4 w-4 mr-2" />
           Добавить блок
         </Button>
@@ -111,7 +111,7 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
           <p className="text-gray-500 dark:text-gray-400 mb-4">
             Блоки описания не добавлены
           </p>
-          <Button onClick={addBlock}>
+          <Button type="button" onClick={addBlock}>
             <Plus className="h-4 w-4 mr-2" />
             Создать первый блок
           </Button>
@@ -135,6 +135,7 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
             </div>
             <div className="flex items-center space-x-2">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setEditingBlock(editingBlock === block.id ? null : block.id)}
@@ -143,6 +144,7 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
                 {editingBlock === block.id ? 'Просмотр' : 'Редактировать'}
               </Button>
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => deleteBlock(block.id)}
@@ -181,6 +183,14 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
                 placeholder="https://example.com/demo.gif"
                 leftIcon={<Image className="h-4 w-4" />}
               />
+              
+              <Input
+                label="Подпись под GIF"
+                value={block.gifCaption || ''}
+                onChange={(e) => updateBlock(block.id, { gifCaption: e.target.value })}
+                placeholder="Описание того, что показано на GIF"
+                leftIcon={<FileText className="h-4 w-4" />}
+              />
 
               {/* Ссылки блока */}
               <div className="space-y-3">
@@ -207,6 +217,7 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
                           {link.url}
                         </a>
                         <Button
+                          type="button"
                           variant="outline"
                           size="sm"
                           onClick={() => removeLinkFromBlock(block.id, link.id)}
@@ -235,11 +246,12 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
                     <div className="flex space-x-2">
                       <Select
                         value={newLink.type || 'other'}
-                        onChange={(value) => setNewLink({ ...newLink, type: value })}
+                        onChange={(e) => setNewLink({ ...newLink, type: e.target.value as any })}
                         options={linkTypeOptions}
                         className="flex-1"
                       />
                       <Button
+                        type="button"
                         size="sm"
                         onClick={() => addLinkToBlock(block.id)}
                         disabled={!newLink.title || !newLink.url}
@@ -264,8 +276,15 @@ export function ProjectBlockEditor({ blocks, onChange }: ProjectBlockEditorProps
                 </div>
               )}
               {block.gifUrl && (
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  GIF: {block.gifUrl}
+                <div className="space-y-2">
+                  <div className="text-sm text-blue-600 dark:text-blue-400">
+                    GIF: {block.gifUrl}
+                  </div>
+                  {block.gifCaption && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 italic">
+                      {block.gifCaption}
+                    </div>
+                  )}
                 </div>
               )}
               {block.links && block.links.length > 0 && (

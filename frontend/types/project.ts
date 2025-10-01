@@ -5,6 +5,7 @@ export interface ProjectBlock {
   title: string;
   content: string; // Markdown content
   gifUrl?: string;
+  gifCaption?: string; // Подпись под GIF
   links?: ProjectLink[];
 }
 
@@ -24,11 +25,9 @@ export interface Project {
   category: string;
   startDate: string;
   deadline: string;
-  budget?: number;
   website?: string;
   telegramPost?: string;
   image?: string;
-  compatibility: OSCompatibility[];
   blocks: ProjectBlock[];
   createdAt: string;
   updatedAt: string;
@@ -60,11 +59,9 @@ export interface CreateProjectData {
   category: string;
   startDate: string;
   deadline: string;
-  budget?: number;
   website?: string;
   telegramPost?: string;
   image?: string;
-  compatibility: OSCompatibility[];
   blocks: ProjectBlock[];
 }
 

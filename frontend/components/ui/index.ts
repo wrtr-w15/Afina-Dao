@@ -1,16 +1,4 @@
 // UI Components exports
-export { Button } from './Button';
-export { Card } from './Card';
-export { Badge } from './Badge';
-export { Input } from './Input';
-export { Textarea } from './Textarea';
-export { Modal } from './Modal';
-export { Alert } from './Alert';
-export { LoadingSpinner } from './LoadingSpinner';
-export { Select } from './Select';
-export { Popover } from './Popover';
-
-// Default exports
 export { default as Button } from './Button';
 export { default as Card } from './Card';
 export { default as Badge } from './Badge';

@@ -9,7 +9,11 @@ const API_BASE_URL = typeof window !== 'undefined' ? window.location.origin : ''
 async function handleApiResponse(response: Response) {
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'API request failed');
+    const errorMessage = error.error || 'API request failed';
+    const customError = new Error(errorMessage);
+    // Добавляем статус код для лучшей обработки
+    (customError as any).status = response.status;
+    throw customError;
   }
   return response.json();
 }
@@ -81,5 +85,20 @@ export const deleteCategory = async (id: string): Promise<void> => {
   } catch (error) {
     console.error('Error deleting category:', error);
     throw error;
+  }
+};
+
+// Получить статистику категорий
+export const getCategoriesStats = async (): Promise<{ total: number; active: number; inactive: number }> => {
+  try {
+    const categories = await getCategories();
+    return {
+      total: categories.length,
+      active: categories.filter(cat => cat.isActive).length,
+      inactive: categories.filter(cat => !cat.isActive).length
+    };
+  } catch (error) {
+    console.error('Error loading categories stats:', error);
+    return { total: 0, active: 0, inactive: 0 };
   }
 };

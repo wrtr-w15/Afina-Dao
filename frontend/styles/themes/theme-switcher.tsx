@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useTheme, THEME_NAMES } from './index';
+import { useTheme } from './theme-provider';
+import { THEME_NAMES } from './index';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
 interface ThemeSwitcherProps {

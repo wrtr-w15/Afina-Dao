@@ -3,134 +3,70 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Badge } from '../../components/ui/Badge';
-import { 
-  FolderOpen, 
-  LogOut,
-  Tag
-} from 'lucide-react';
-import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
 
 export default function AdminDashboard() {
   const router = useRouter();
 
-  const handleLogout = () => {
-    logoutAdmin();
-    removeAdminTokenFromCookies();
-    router.push('/admin/login');
-  };
-
-  // Количество доступных проектов
-  const availableProjectsCount = 3;
-
   return (
-    <AdminLayout 
-      title="Панель управления"
-      description="Главная панель администратора"
-    >
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Панель администратора
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              Управление проектами Afina DAO
-            </p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleLogout}
-              className="text-red-600 border-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Выйти
-            </Button>
-          </div>
+    <AdminLayout title="Панель управления" description="Добро пожаловать в админ панель Afina DAO">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Панель управления
+          </h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
+            Добро пожаловать в админ панель Afina DAO
+          </p>
         </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Available Projects Card */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Доступные проекты
-              </h2>
-              <Badge variant="outline" className="text-blue-600 border-blue-600">
-                {availableProjectsCount} проектов
-              </Badge>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                <span className="text-2xl">📁</span>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Проекты
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Управление проектами
+                </p>
+              </div>
             </div>
-            
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Управляйте доступными проектами и их статусом
-            </p>
-            
-            <div className="flex space-x-3">
-              <Button 
-                className="flex-1"
+            <div className="mt-4">
+              <button
                 onClick={() => router.push('/admin/projects')}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                <FolderOpen className="h-4 w-4 mr-2" />
                 Перейти к проектам
-              </Button>
+              </button>
             </div>
-          </Card>
+          </div>
 
-          {/* Categories Card */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Категории проектов
-              </h2>
-              <Badge variant="outline" className="text-purple-600 border-purple-600">
-                7 категорий
-              </Badge>
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center">
+              <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                <span className="text-2xl">🏷️</span>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Категории
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Управление категориями
+                </p>
+              </div>
             </div>
-            
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Управляйте категориями для организации проектов
-            </p>
-            
-            <div className="flex space-x-3">
-              <Button 
-                className="flex-1"
+            <div className="mt-4">
+              <button
                 onClick={() => router.push('/admin/categories')}
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                <Tag className="h-4 w-4 mr-2" />
-                Управление категориями
-              </Button>
+                Перейти к категориям
+              </button>
             </div>
-          </Card>
-
-          {/* Quick Stats */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Статистика
-            </h2>
-            
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Доступных проектов:</span>
-                <span className="text-2xl font-bold text-blue-600">{availableProjectsCount}</span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Активных:</span>
-                <span className="text-2xl font-bold text-green-600">2</span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">В разработке:</span>
-                <span className="text-2xl font-bold text-orange-600">1</span>
-              </div>
-            </div>
-          </Card>
+          </div>
         </div>
       </div>
     </AdminLayout>

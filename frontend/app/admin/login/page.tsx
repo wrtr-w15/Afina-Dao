@@ -2,19 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '../../../components/ui/Button';
-import { Input } from '../../../components/ui/Input';
-import { Card } from '../../../components/ui/Card';
-import { Alert } from '../../../components/ui/Alert';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
-import { ADMIN_CREDENTIALS, setAdminTokenInCookies } from '../../../lib/auth';
 
 export default function AdminLogin() {
   const [formData, setFormData] = useState({
     username: '',
     password: ''
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -24,109 +17,88 @@ export default function AdminLogin() {
     setIsLoading(true);
     setError('');
 
-    // Проверка логина/пароля
-    if (formData.username === ADMIN_CREDENTIALS.username && formData.password === ADMIN_CREDENTIALS.password) {
-      // Сохраняем токен в localStorage
-      localStorage.setItem('admin_token', 'admin_authenticated');
-      localStorage.setItem('admin_user', formData.username);
-      
-      // Устанавливаем токен в cookies для middleware
-      setAdminTokenInCookies('admin_authenticated');
-      
-      // Перенаправляем на админку
-      router.push('/admin');
-    } else {
-      setError('Неверный логин или пароль');
+    try {
+      // Простая проверка логина
+      if (formData.username === 'admin' && formData.password === 'admin123') {
+        // Устанавливаем токен в localStorage и cookies
+        localStorage.setItem('admin_token', 'admin_authenticated');
+        document.cookie = 'admin_token=admin_authenticated; path=/; max-age=86400';
+        
+        // Перенаправляем на админ панель
+        router.push('/admin');
+      } else {
+        setError('Неверные учетные данные');
+      }
+    } catch (err) {
+      setError('Произошла ошибка при входе');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
       <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <div className="mx-auto h-12 w-12 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Lock className="h-6 w-6 text-white" />
-          </div>
-          <h2 className="mt-6 text-3xl font-bold text-gray-900 dark:text-white">
-            Вход в админку
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
+            Вход в админ панель
           </h2>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Afina DAO Wiki Admin Panel
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+            Afina DAO Wiki
           </p>
         </div>
-
-        <Card className="p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <Alert variant="error">
-                {error}
-              </Alert>
-            )}
-
+        
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="space-y-4">
             <div>
-              <Input
-                label="Логин"
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Имя пользователя
+              </label>
+              <input
+                id="username"
                 name="username"
                 type="text"
+                required
                 value={formData.username}
-                onChange={handleInputChange}
-                placeholder="Введите логин"
-                leftIcon={<User className="h-4 w-4" />}
-                required
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="admin"
               />
             </div>
-
+            
             <div>
-              <Input
-                label="Пароль"
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Пароль
+              </label>
+              <input
+                id="password"
                 name="password"
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={handleInputChange}
-                placeholder="Введите пароль"
-                leftIcon={<Lock className="h-4 w-4" />}
-                rightIcon={
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                }
+                type="password"
                 required
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="admin123"
               />
             </div>
+          </div>
 
-            <Button
+          {error && (
+            <div className="text-red-600 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <button
               type="submit"
-              className="w-full"
               disabled={isLoading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {isLoading ? 'Вход...' : 'Войти'}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Тестовые данные: admin / admin123
-            </p>
+            </button>
           </div>
-        </Card>
+        </form>
       </div>
     </div>
   );

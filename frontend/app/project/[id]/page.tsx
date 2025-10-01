@@ -3,24 +3,24 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Layout from '../../../components/Layout';
-import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
 import { 
   ArrowLeft, 
   ExternalLink, 
-  Github, 
-  Calendar, 
-  Users, 
-  Code,
-  Monitor,
-  Smartphone,
   Globe,
-  FileText,
   Link as LinkIcon,
-  Image
+  Image,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  Send,
+  List,
+  Navigation,
+  AlignJustify
 } from 'lucide-react';
-import { Project, PROJECT_STATUS_LABELS, PROJECT_CATEGORY_LABELS, PROJECT_STATUS_COLORS, PROJECT_CATEGORY_COLORS, OS_COMPATIBILITY_LABELS, OS_COMPATIBILITY_ICONS } from '../../../types/project';
+import { Project, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from '../../../types/project';
 import { getProjectById } from '../../../lib/projects';
 
 export default function ProjectPage() {
@@ -28,6 +28,8 @@ export default function ProjectPage() {
   const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeBlock, setActiveBlock] = useState<number>(0);
+  const [isNavigationCollapsed, setIsNavigationCollapsed] = useState(false);
 
   useEffect(() => {
     const loadProject = async () => {
@@ -44,6 +46,30 @@ export default function ProjectPage() {
 
     loadProject();
   }, [params.id]);
+
+  // Отслеживание активного блока при прокрутке
+  useEffect(() => {
+    if (!project?.blocks) return;
+
+    const handleScroll = () => {
+      const blocks = project.blocks.map((_, index) => 
+        document.getElementById(`block-${index}`)
+      ).filter(Boolean);
+
+      const scrollPosition = window.scrollY + 100;
+
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        const block = blocks[i];
+        if (block && block.offsetTop <= scrollPosition) {
+          setActiveBlock(i);
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [project]);
 
   if (loading) {
     return (
@@ -86,15 +112,29 @@ export default function ProjectPage() {
     return new Date(dateString).toLocaleDateString('ru-RU');
   };
 
-  const getOSIcon = (os: string) => {
-    switch (os) {
-      case 'windows': return <Monitor className="h-4 w-4" />;
-      case 'macos': return <Monitor className="h-4 w-4" />;
-      case 'linux': return <Monitor className="h-4 w-4" />;
-      case 'web': return <Globe className="h-4 w-4" />;
-      case 'mobile': return <Smartphone className="h-4 w-4" />;
-      default: return <Monitor className="h-4 w-4" />;
+  // Функция для плавной прокрутки к блоку
+  const scrollToBlock = (index: number) => {
+    const element = document.getElementById(`block-${index}`);
+    if (element) {
+      element.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'start'
+      });
+      setActiveBlock(index);
     }
+  };
+
+  // Функция для рендеринга Markdown (простая версия)
+  const renderMarkdown = (content: string) => {
+    return content
+      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
+      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mb-3">$1</h2>')
+      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-medium mb-2">$1</h3>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+      .replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
+      .replace(/\n\n/g, '</p><p class="mb-4">')
+      .replace(/\n/g, '<br>');
   };
 
   return (
@@ -103,183 +143,194 @@ export default function ProjectPage() {
       description={project.description}
       showSidebar={true}
     >
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center space-x-4">
-          <Button 
-            variant="outline" 
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Назад
-          </Button>
+      <div className="space-y-8">
+        {/* Банер проекта */}
+        {project.image && (
+          <div className="relative w-full h-64 md:h-80 rounded-lg overflow-hidden">
+            <img 
+              src={project.image} 
+              alt={`Баннер ${project.name}`}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
+        {/* Заголовок */}
+        <div className="mb-8">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
+            {project.name}
+          </h1>
+          <div className="flex items-center gap-4 mb-4">
+            <Badge className={PROJECT_STATUS_COLORS[project.status]}>
+              {PROJECT_STATUS_LABELS[project.status]}
+            </Badge>
+            <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+              <Calendar className="h-4 w-4 mr-1" />
+              Создан: {formatDate(project.createdAt)}
+            </div>
+          </div>
+        </div>
+
+        {/* Основной контент с сайдбаром */}
+        <div className="flex gap-8">
+          {/* Основной контент */}
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {project.name}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              {project.description}
-            </p>
-          </div>
-        </div>
-
-        {/* Status and Category */}
-        <div className="flex flex-wrap gap-3">
-          <Badge className={PROJECT_STATUS_COLORS[project.status]}>
-            {PROJECT_STATUS_LABELS[project.status]}
-          </Badge>
-          <Badge className={PROJECT_CATEGORY_COLORS[project.category]}>
-            {PROJECT_CATEGORY_LABELS[project.category]}
-          </Badge>
-        </div>
-
-        {/* Progress */}
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Прогресс проекта
-          </h2>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-              <span>Выполнено</span>
-              <span>{project.progress}%</span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-              <div 
-                className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-                style={{ width: `${project.progress}%` }}
-              ></div>
-            </div>
-          </div>
-        </Card>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Основная информация */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Основная информация
-            </h2>
-            
-            <div className="space-y-4">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                <span>Создан: {formatDate(project.createdAt)}</span>
+            {/* Блоки описания без границ */}
+            {project.blocks && project.blocks.length > 0 && (
+              <div className="space-y-8">
+                {project.blocks.map((block, index) => (
+                  <div key={block.id} id={`block-${index}`} className="space-y-4 scroll-mt-20">
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {block.title}
+                    </h2>
+                    
+                    {block.content && (
+                      <div 
+                        className="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
+                        dangerouslySetInnerHTML={{ 
+                          __html: `<p class="mb-4">${renderMarkdown(block.content)}</p>` 
+                        }}
+                      />
+                    )}
+                    
+                    {block.gifUrl && (
+                      <div className="space-y-3">
+                        <img 
+                          src={block.gifUrl} 
+                          alt={`GIF для ${block.title}`}
+                          className="w-full max-w-4xl rounded-lg"
+                        />
+                        {block.gifCaption && (
+                          <div className="text-center">
+                            <p className="text-base text-gray-600 dark:text-gray-300 italic font-medium bg-gray-50 dark:bg-gray-800 py-2 px-4 rounded-lg">
+                              {block.gifCaption}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {block.links && block.links.length > 0 && (
+                      <div className="space-y-2">
+                        {block.links.map((link) => (
+                          <a
+                            key={link.id}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                          >
+                            <LinkIcon className="h-4 w-4" />
+                            {link.title}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            </div>
-          </Card>
+            )}
+          </div>
 
+          {/* Правый сайдбар */}
+          <div className="w-80 flex-shrink-0">
+            <div className="sticky top-24 space-y-4">
+              {/* Компактная навигация */}
+              {project.blocks && project.blocks.length > 0 && (
+                <div className={`rounded-lg transition-all duration-200 ${
+                  isNavigationCollapsed 
+                    ? 'p-1' 
+                    : 'bg-white dark:bg-gray-800 shadow-lg p-2'
+                }`}>
+                  {/* Содержимое навигации */}
+                  {!isNavigationCollapsed && (
+                    <nav className="px-1 pb-1 space-y-0.5">
+                      {project.blocks.map((block, index) => (
+                        <div key={block.id} className="flex items-center justify-between">
+                          <button
+                            onClick={() => scrollToBlock(index)}
+                            className={`flex-1 text-left px-2 py-2.5 text-xs rounded transition-colors ${
+                              activeBlock === index
+                                ? 'text-blue-600 dark:text-blue-400 font-medium'
+                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            {block.title}
+                          </button>
+                          {index === 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIsNavigationCollapsed(!isNavigationCollapsed)}
+                              className="ml-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 transition-all duration-200 p-0 h-10 w-10"
+                              title="Свернуть навигацию"
+                            >
+                              <ChevronLeft className="h-10 w-10" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </nav>
+                  )}
+                  
+                  {/* Кнопка разворачивания когда свернуто - на том же месте */}
+                  {isNavigationCollapsed && (
+                    <nav className="px-1 pb-1 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1"></div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setIsNavigationCollapsed(false)}
+                          className="ml-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-500 transition-all duration-200 p-0 h-10 w-10"
+                          title="Развернуть навигацию"
+                        >
+                          <List className="h-10 w-10" />
+                        </Button>
+                      </div>
+                    </nav>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Совместимость ОС */}
-        {project.compatibility && project.compatibility.length > 0 && (
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Совместимость
-            </h2>
-            
-            <div className="flex flex-wrap gap-3">
-              {project.compatibility.map((os, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center px-3 py-2 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg"
-                >
-                  {getOSIcon(os)}
-                  <span className="ml-2 text-sm font-medium">
-                    {OS_COMPATIBILITY_LABELS[os]}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Блоки описания */}
-        {project.blocks && project.blocks.length > 0 && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Описание проекта
-            </h2>
-            
-            {project.blocks.map((block, index) => (
-              <Card key={block.id} className="p-6">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                  {block.title}
-                </h3>
-                
-                {block.content && (
-                  <div className="prose dark:prose-invert max-w-none mb-4">
-                    <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                      {block.content}
-                    </pre>
-                  </div>
-                )}
-                
-                {block.gifUrl && (
-                  <div className="mb-4">
-                    <img 
-                      src={block.gifUrl} 
-                      alt={`GIF для ${block.title}`}
-                      className="max-w-full h-auto rounded-lg"
-                    />
-                  </div>
-                )}
-                
-                {block.links && block.links.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">
-                      Ссылки:
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {block.links.map((link) => (
-                        <a
-                          key={link.id}
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/30 transition-colors"
-                        >
-                          <LinkIcon className="h-3 w-3 mr-1" />
-                          {link.title}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
 
         {/* Ссылки проекта */}
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Ссылки проекта
-          </h2>
-          
-          <div className="flex flex-wrap gap-3">
-            {project.website && (
-              <a
-                href={project.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Веб-сайт
-              </a>
-            )}
+        {(project.website || project.telegramPost) && (
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Ссылки проекта
+            </h2>
             
-            {project.telegramPost && (
-              <a
-                href={project.telegramPost}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Globe className="h-4 w-4 mr-2" />
-                Telegram Post
-              </a>
-            )}
+            <div className="flex flex-wrap gap-4">
+              {project.website && (
+                <a
+                  href={project.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  title="Веб-сайт"
+                >
+                  <Globe className="h-5 w-5" />
+                </a>
+              )}
+              
+              {project.telegramPost && (
+                <a
+                  href={project.telegramPost}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  title="Telegram Post"
+                >
+                  <Send className="h-5 w-5" />
+                </a>
+              )}
+            </div>
           </div>
-        </Card>
+        )}
       </div>
     </Layout>
   );

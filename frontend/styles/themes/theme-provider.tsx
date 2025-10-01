@@ -178,7 +178,7 @@ function generateThemeCSS(theme: Theme): string {
   // Components
   Object.entries(theme.components).forEach(([componentName, componentStyles]) => {
     Object.entries(componentStyles).forEach(([styleName, value]) => {
-      if (typeof value === 'object') {
+      if (typeof value === 'object' && value !== null) {
         Object.entries(value).forEach(([subKey, subValue]) => {
           cssVars.push(`--${componentName}-${styleName}-${subKey}: ${subValue};`);
         });

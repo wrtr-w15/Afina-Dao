@@ -8,8 +8,28 @@ const API_BASE_URL = typeof window !== 'undefined' ? window.location.origin : ''
 // Вспомогательная функция для обработки ошибок API
 async function handleApiResponse(response: Response) {
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'API request failed');
+    let errorMessage = 'API request failed';
+    let errorDetails = {};
+    
+    try {
+      const error = await response.json();
+      console.log('API Error Response:', error);
+      errorDetails = error;
+      errorMessage = error.error || error.message || error.details || `HTTP ${response.status}: ${response.statusText}`;
+    } catch (parseError) {
+      console.error('Failed to parse error response:', parseError);
+      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    }
+    
+    console.error('API Error:', {
+      status: response.status,
+      statusText: response.statusText,
+      url: response.url,
+      errorMessage,
+      errorDetails
+    });
+    
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -21,6 +41,21 @@ export const getProjects = async (): Promise<Project[]> => {
     return await handleApiResponse(response);
   } catch (error) {
     console.error('Error loading projects:', error);
+    return [];
+  }
+};
+
+// Поиск проектов
+export const searchProjects = async (query: string): Promise<Project[]> => {
+  try {
+    if (!query.trim()) {
+      return [];
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(query.trim())}`);
+    return await handleApiResponse(response);
+  } catch (error) {
+    console.error('Error searching projects:', error);
     return [];
   }
 };
@@ -39,25 +74,62 @@ export const getProjectById = async (id: string): Promise<Project | null> => {
   }
 };
 
+// Функция для глубокой очистки объектов от циклических ссылок
+const deepCleanObject = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return obj.toISOString();
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepCleanObject(item));
+  }
+  
+  const cleaned: any = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
+      if (typeof value === 'function') continue; // Пропускаем функции
+      if (Array.isArray(value)) {
+        cleaned[key] = value.map(item => deepCleanObject(item));
+      } else if (value && typeof value === 'object' && value.constructor === Object) {
+        cleaned[key] = deepCleanObject(value);
+      } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        cleaned[key] = value;
+      }
+    }
+  }
+  return cleaned;
+};
+
 // Создать новый проект
 export const createProject = async (data: CreateProjectData): Promise<Project> => {
   try {
-    // Очистка данных от циклических ссылок
-    const cleanData = {
-      ...data,
-      blocks: data.blocks?.map(block => ({
-        id: block.id,
-        title: block.title,
-        content: block.content,
-        gifUrl: block.gifUrl,
-        links: block.links?.map(link => ({
-          id: link.id,
-          title: link.title,
-          url: link.url,
-          type: link.type
-        })) || []
-      })) || []
-    };
+    // Создаем чистый объект без циклических ссылок
+    const cleanData = deepCleanObject({
+      name: data.name,
+      sidebarName: data.sidebarName,
+      description: data.description,
+      status: typeof data.status === 'string' ? data.status : 'draft',
+      category: data.category,
+      startDate: data.startDate,
+      deadline: data.deadline,
+      website: data.website,
+      telegramPost: data.telegramPost,
+      image: data.image,
+      blocks: data.blocks || []
+    });
+
+    // Отладочная информация
+    console.log('Original data:', data);
+    console.log('Clean data:', cleanData);
+    
+    // Проверяем, что cleanData не содержит циклических ссылок
+    try {
+      JSON.stringify(cleanData);
+      console.log('✅ cleanData is serializable');
+    } catch (jsonError) {
+      console.error('❌ cleanData contains circular references:', jsonError);
+      throw new Error('Data contains circular references');
+    }
 
     const response = await fetch(`${API_BASE_URL}/api/projects`, {
       method: 'POST',
@@ -78,20 +150,51 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
 };
 
 // Обновить проект
-export const updateProject = async (data: UpdateProjectData): Promise<Project | null> => {
+export const updateProject = async (id: string, data: UpdateProjectData): Promise<Project | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/projects/${data.id}`, {
+    if (!id) {
+      throw new Error('Project ID is required');
+    }
+    
+    // Создаем чистый объект без циклических ссылок
+    const cleanData = {
+      name: data.name,
+      sidebarName: data.sidebarName,
+      description: data.description,
+      status: data.status,
+      category: data.category,
+      startDate: data.startDate,
+      deadline: data.deadline,
+      website: data.website,
+      telegramPost: data.telegramPost,
+      image: data.image,
+      blocks: data.blocks?.map(block => ({
+        id: block.id,
+        title: block.title,
+        content: block.content,
+        gifUrl: block.gifUrl,
+        gifCaption: block.gifCaption,
+        links: block.links?.map(link => ({
+          id: link.id,
+          title: link.title,
+          url: link.url,
+          type: link.type
+        })) || []
+      })) || []
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/projects/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(cleanData),
     });
     
     await handleApiResponse(response);
     
     // Возвращаем обновленный проект
-    return await getProjectById(data.id);
+    return await getProjectById(id);
   } catch (error) {
     console.error('Error updating project:', error);
     return null;
@@ -125,17 +228,6 @@ export const getProjectsByCategory = async (category: ProjectCategory): Promise<
   return projects.filter(project => project.category === category);
 };
 
-// Поиск проектов
-export const searchProjects = async (query: string): Promise<Project[]> => {
-  const projects = await getProjects();
-  const lowercaseQuery = query.toLowerCase();
-  
-  return projects.filter(project => 
-    project.name.toLowerCase().includes(lowercaseQuery) ||
-    project.description.toLowerCase().includes(lowercaseQuery) ||
-    project.sidebarName.toLowerCase().includes(lowercaseQuery)
-  );
-};
 
 // Получить статистику проектов
 export const getProjectsStats = async () => {
@@ -144,12 +236,9 @@ export const getProjectsStats = async () => {
   return {
     total: projects.length,
     byStatus: {
-      planning: projects.filter(p => p.status === 'planning').length,
-      development: projects.filter(p => p.status === 'development').length,
-      testing: projects.filter(p => p.status === 'testing').length,
-      completed: projects.filter(p => p.status === 'completed').length,
-      'on-hold': projects.filter(p => p.status === 'on-hold').length,
-      cancelled: projects.filter(p => p.status === 'cancelled').length
+      active: projects.filter(p => p.status === 'active').length,
+      draft: projects.filter(p => p.status === 'draft').length,
+      inactive: projects.filter(p => p.status === 'inactive').length
     },
     byCategory: {
       defi: projects.filter(p => p.category === 'defi').length,
@@ -160,8 +249,6 @@ export const getProjectsStats = async () => {
       tools: projects.filter(p => p.category === 'tools').length,
       other: projects.filter(p => p.category === 'other').length
     },
-    averageProgress: projects.length > 0 
-      ? Math.round(projects.reduce((sum, p) => sum + p.progress, 0) / projects.length)
-      : 0
+    averageProgress: 0
   };
 };

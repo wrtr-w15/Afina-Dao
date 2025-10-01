@@ -34,7 +34,7 @@ interface ArticleCardProps {
 
 export default function ArticleCard({ article }: ArticleCardProps) {
   const router = useRouter();
-  const { locale } = router;
+  const locale = 'ru'; // Временное решение для App Router
   
   const translation = article.translations.find(t => t.language === locale) || article.translations[0];
   

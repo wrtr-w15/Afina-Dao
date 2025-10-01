@@ -31,12 +31,9 @@ export default function ProjectsPage() {
   const [stats, setStats] = useState({
     total: 0,
     byStatus: {
-      planning: 0,
-      development: 0,
-      testing: 0,
-      completed: 0,
-      'on-hold': 0,
-      cancelled: 0
+      active: 0,
+      draft: 0,
+      inactive: 0
     },
     byCategory: {
       defi: 0,
@@ -77,10 +74,7 @@ export default function ProjectsPage() {
 
     const filtered = projects.filter(project =>
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.technologies.some(tech => 
-        tech.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      project.description.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredProjects(filtered);
   };
@@ -123,9 +117,9 @@ export default function ProjectsPage() {
         {/* Stats */}
         <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
           <span>Всего: <span className="font-semibold text-blue-600">{stats.total}</span></span>
-          <span>В разработке: <span className="font-semibold text-green-600">{stats.byStatus.development}</span></span>
-          <span>Тестирование: <span className="font-semibold text-yellow-600">{stats.byStatus.testing}</span></span>
-          <span>Завершено: <span className="font-semibold text-purple-600">{stats.byStatus.completed}</span></span>
+          <span>Активные: <span className="font-semibold text-green-600">{stats.byStatus.active}</span></span>
+          <span>Черновики: <span className="font-semibold text-yellow-600">{stats.byStatus.draft}</span></span>
+          <span>Неактивные: <span className="font-semibold text-red-600">{stats.byStatus.inactive}</span></span>
         </div>
 
         {/* Search */}
@@ -154,47 +148,15 @@ export default function ProjectsPage() {
                 </div>
               </div>
 
-              {/* Status and Category */}
+              {/* Status */}
               <div className="flex flex-wrap gap-2 mb-4">
                 <Badge className={PROJECT_STATUS_COLORS[project.status]}>
                   {PROJECT_STATUS_LABELS[project.status]}
                 </Badge>
-                <Badge className={PROJECT_CATEGORY_COLORS[project.category]}>
-                  {PROJECT_CATEGORY_LABELS[project.category]}
-                </Badge>
-              </div>
-
-              {/* Progress */}
-              <div className="mb-4">
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  <span>Прогресс</span>
-                  <span>{project.progress}%</span>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${project.progress}%` }}
-                  ></div>
-                </div>
               </div>
 
 
-              {/* Compatibility */}
-              {project.compatibility && project.compatibility.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex flex-wrap gap-1">
-                    {project.compatibility.map((os, index) => (
-                      <span 
-                        key={index}
-                        className="text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-1 rounded flex items-center"
-                      >
-                        <span className="mr-1">{OS_COMPATIBILITY_ICONS[os]}</span>
-                        {OS_COMPATIBILITY_LABELS[os]}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+
 
 
               {/* Links */}

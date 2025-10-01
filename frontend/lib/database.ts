@@ -8,11 +8,8 @@ export const dbConfig = {
   database: process.env.DB_NAME || 'afina_dao_wiki',
   charset: 'utf8mb4',
   timezone: '+00:00',
-  acquireTimeout: 60000,
-  timeout: 60000,
-  reconnect: true,
-  ssl: false,
-  allowPublicKeyRetrieval: true
+  ssl: false as any,
+  // Убираем устаревшие опции
 };
 
 // Типы для работы с базой данных
@@ -23,12 +20,10 @@ export interface DatabaseProject {
   description: string;
   status: string;
   category: string;
-  progress: number;
   budget?: number;
   website?: string;
   telegram_post?: string;
   image?: string;
-  compatibility: string; // JSON string
   created_at: string;
   updated_at: string;
 }

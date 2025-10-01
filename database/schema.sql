@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS projects (
     website VARCHAR(500) NULL,
     telegram_post VARCHAR(500) NULL,
     image VARCHAR(500) NULL,
-    compatibility JSON NOT NULL DEFAULT '[]',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -27,6 +26,7 @@ CREATE TABLE IF NOT EXISTS project_blocks (
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     gif_url VARCHAR(500) NULL,
+    gif_caption TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -51,10 +51,10 @@ CREATE INDEX idx_project_blocks_project_id ON project_blocks(project_id);
 CREATE INDEX idx_project_block_links_block_id ON project_block_links(block_id);
 
 -- Вставка начальных данных
-INSERT INTO projects (id, name, sidebar_name, description, status, category, budget, website, telegram_post, compatibility) VALUES
-('1', 'Afina DeFi Protocol', 'DeFi Protocol', 'Децентрализованный протокол для управления ликвидностью и автоматизированного маркет-мейкинга', 'active', 'DeFi', 50000.00, 'https://afina-defi.com', 'https://t.me/afina_dao/123', '["windows", "macos"]'),
-('2', 'NFT Marketplace', 'NFT Market', 'Маркетплейс для торговли NFT с поддержкой различных блокчейнов', 'draft', 'NFT', 30000.00, 'https://afina-nft.com', 'https://t.me/afina_dao/124', '["windows"]'),
-('3', 'DAO Governance Tool', 'DAO Governance', 'Инструмент для управления DAO с голосованием и предложениями', 'active', 'DAO', 40000.00, 'https://afina-dao.com', 'https://t.me/afina_dao/125', '["macos"]');
+INSERT INTO projects (id, name, sidebar_name, description, status, category, budget, website, telegram_post) VALUES
+('1', 'Afina DeFi Protocol', 'DeFi Protocol', 'Децентрализованный протокол для управления ликвидностью и автоматизированного маркет-мейкинга', 'active', 'DeFi', 50000.00, 'https://afina-defi.com', 'https://t.me/afina_dao/123'),
+('2', 'NFT Marketplace', 'NFT Market', 'Маркетплейс для торговли NFT с поддержкой различных блокчейнов', 'draft', 'NFT', 30000.00, 'https://afina-nft.com', 'https://t.me/afina_dao/124'),
+('3', 'DAO Governance Tool', 'DAO Governance', 'Инструмент для управления DAO с голосованием и предложениями', 'active', 'DAO', 40000.00, 'https://afina-dao.com', 'https://t.me/afina_dao/125');
 
 -- Вставка блоков для первого проекта
 INSERT INTO project_blocks (id, project_id, title, content, gif_url) VALUES

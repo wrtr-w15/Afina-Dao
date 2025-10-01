@@ -22,7 +22,7 @@ import {
   Github,
   Image
 } from 'lucide-react';
-import { CreateProjectData, ProjectStatus, PROJECT_STATUS_LABELS, OSCompatibility, OS_COMPATIBILITY_LABELS, OS_COMPATIBILITY_ICONS } from '../../../../types/project';
+import { CreateProjectData, ProjectStatus, PROJECT_STATUS_LABELS } from '../../../../types/project';
 import { Category } from '../../../../types/category';
 import { ProjectBlockEditor } from '../../../../components/ui/ProjectBlockEditor';
 import { createProject } from '../../../../lib/projects';
@@ -47,7 +47,6 @@ export default function CreateProjectPage() {
     website: '',
     telegramPost: '',
     image: '',
-    compatibility: [],
     blocks: []
   });
 
@@ -71,14 +70,6 @@ export default function CreateProjectPage() {
     }
   };
 
-  const toggleCompatibility = (os: OSCompatibility) => {
-    setFormData(prev => ({
-      ...prev,
-      compatibility: prev.compatibility.includes(os)
-        ? prev.compatibility.filter(o => o !== os)
-        : [...prev.compatibility, os]
-    }));
-  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -88,10 +79,11 @@ export default function CreateProjectPage() {
     }));
   };
 
-  const handleSelectChange = (name: string, value: string) => {
+  const handleSelectChange = (name: string, value: string | React.ChangeEvent<HTMLSelectElement>) => {
+    const actualValue = typeof value === 'string' ? value : value.target.value;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: actualValue
     }));
   };
 
@@ -112,21 +104,56 @@ export default function CreateProjectPage() {
       if (!formData.description.trim()) {
         throw new Error('Описание проекта обязательно');
       }
-      if (formData.compatibility.length === 0) {
-        throw new Error('Выберите хотя бы одну совместимую ОС');
-      }
       if (!formData.category) {
         throw new Error('Выберите категорию проекта');
       }
 
-      // Очистка данных перед отправкой
+      // Очистка данных перед отправкой - создаем полностью новые объекты
       const cleanFormData = {
-        ...formData,
-        blocks: formData.blocks.filter(block => block && block.id) // Убираем пустые блоки
+        name: String(formData.name || ''),
+        sidebarName: String(formData.sidebarName || ''),
+        description: String(formData.description || ''),
+        status: typeof formData.status === 'string' ? formData.status : 'draft',
+        category: String(formData.category || ''),
+        startDate: String(formData.startDate || ''),
+        deadline: String(formData.deadline || ''),
+        budget: formData.budget ? Number(formData.budget) : undefined,
+        website: formData.website ? String(formData.website) : undefined,
+        telegramPost: formData.telegramPost ? String(formData.telegramPost) : undefined,
+        image: formData.image ? String(formData.image) : undefined,
+        blocks: Array.isArray(formData.blocks) ? formData.blocks
+          .filter(block => block && typeof block === 'object' && block.id)
+          .map(block => ({
+            id: String(block.id),
+            title: String(block.title || ''),
+            content: String(block.content || ''),
+            gifUrl: block.gifUrl ? String(block.gifUrl) : undefined,
+            links: Array.isArray(block.links) ? block.links
+              .filter(link => link && typeof link === 'object' && link.id)
+              .map(link => ({
+                id: String(link.id),
+                title: String(link.title || ''),
+                url: String(link.url || ''),
+                type: (link.type === 'website' || link.type === 'github' || link.type === 'documentation' || link.type === 'demo') ? link.type as 'website' | 'github' | 'documentation' | 'demo' : 'other'
+              })) : []
+          })) : []
       };
 
+      // Отладочная информация
+      console.log('Form data before cleaning:', formData);
+      console.log('Clean form data:', cleanFormData);
+      
+      // Проверяем, что cleanFormData не содержит циклических ссылок
+      try {
+        JSON.stringify(cleanFormData);
+        console.log('✅ cleanFormData is serializable');
+      } catch (jsonError) {
+        console.error('❌ cleanFormData contains circular references:', jsonError);
+        throw new Error('Form data contains circular references');
+      }
+
       // Создание проекта
-      await createProject(cleanFormData);
+      await createProject(cleanFormData as any);
       
       setSuccess(true);
       setTimeout(() => {
@@ -242,59 +269,15 @@ export default function CreateProjectPage() {
           </div>
 
 
-          {/* Совместимость ОС */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Совместимость ОС
-            </h2>
-            
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Выберите операционные системы, с которыми совместим проект
-              </p>
-              
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(OS_COMPATIBILITY_LABELS).map(([os, label]) => (
-                  <button
-                    key={os}
-                    type="button"
-                    onClick={() => toggleCompatibility(os as OSCompatibility)}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      formData.compatibility.includes(os as OSCompatibility)
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    <div className="text-center">
-                      <div className="text-2xl mb-1">
-                        {OS_COMPATIBILITY_ICONS[os as OSCompatibility]}
-                      </div>
-                      <div className="text-sm font-medium">{label}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              
-              {formData.compatibility.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {formData.compatibility.map((os) => (
-                    <span 
-                      key={os}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
-                    >
-                      {OS_COMPATIBILITY_ICONS[os]} {OS_COMPATIBILITY_LABELS[os]}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Card>
 
           {/* Блоки описания */}
           <Card className="p-6">
             <ProjectBlockEditor
               blocks={formData.blocks || []}
-              onChange={(blocks) => setFormData(prev => ({ ...prev, blocks: blocks || [] }))}
+              onChange={(blocks) => {
+                // Обновляем блоки без автоматического сохранения
+                setFormData(prev => ({ ...prev, blocks: blocks || [] }));
+              }}
             />
           </Card>
 
