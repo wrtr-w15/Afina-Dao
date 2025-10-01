@@ -9,13 +9,10 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
-  ChevronRight,
-  Sun,
-  Moon
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
-import { useTheme } from '../../contexts/ThemeContext';
 
 interface AdminSidebarProps {
   isCollapsed?: boolean;
@@ -26,7 +23,6 @@ export default function AdminSidebar({ isCollapsed = false, onToggle }: AdminSid
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  const { isDarkMode, toggleTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
@@ -135,26 +131,7 @@ export default function AdminSidebar({ isCollapsed = false, onToggle }: AdminSid
       </nav>
 
       {/* Footer */}
-      <div className={`flex-shrink-0 ${isCollapsed ? 'p-1' : 'p-2'} space-y-1`}>
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className={`w-full flex items-center ${isCollapsed ? 'justify-center space-x-0 px-1 py-1' : 'space-x-2 px-2 py-1.5'} rounded-md text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors`}
-          title={isCollapsed ? (isDarkMode ? 'Switch to light mode' : 'Switch to dark mode') : undefined}
-        >
-          {isDarkMode ? (
-            <Sun className="h-4 w-4 flex-shrink-0" />
-          ) : (
-            <Moon className="h-4 w-4 flex-shrink-0" />
-          )}
-          {!isCollapsed && (
-            <span className="font-medium">
-              {isDarkMode ? 'Светлая тема' : 'Темная тема'}
-            </span>
-          )}
-        </button>
-
-        {/* Logout Button */}
+      <div className={`flex-shrink-0 ${isCollapsed ? 'p-1' : 'p-2'}`}>
         <button
           onClick={handleLogout}
           className={`w-full flex items-center ${isCollapsed ? 'justify-center space-x-0 px-1 py-1' : 'space-x-2 px-2 py-1.5'} rounded-md text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors`}

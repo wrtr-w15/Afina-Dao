@@ -1,14 +1,14 @@
 'use client';
 
-import Layout from '../../components/Layout';
-import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
+import Layout from '@/components/LayoutComponent';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { BookOpen, Users, Target, Zap } from 'lucide-react';
 
 export default function AboutPage() {
   return (
-    <Layout>
-      <div className="max-w-4xl mx-auto">
+    <Layout title="Про Afina DAO" description="Информация о децентрализованной автономной организации Afina DAO">
+      <div className="max-w-4xl mx-auto p-6">
         {/* Header */}
         <div className="text-center mb-12">
           <div className="flex items-center justify-center mb-6">
@@ -52,7 +52,7 @@ export default function AboutPage() {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                        <Badge variant="default" className="text-xs">Инновации</Badge>
+                      <Badge variant="outline" className="text-xs">Инновации</Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       Постоянное развитие и внедрение передовых технологий
@@ -60,7 +60,7 @@ export default function AboutPage() {
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Badge variant="default" className="text-xs">Прозрачность</Badge>
+                      <Badge variant="outline" className="text-xs">Прозрачность</Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       Открытость и честность во всех процессах
@@ -68,7 +68,7 @@ export default function AboutPage() {
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Badge variant="default" className="text-xs">Сообщество</Badge>
+                      <Badge variant="outline" className="text-xs">Сообщество</Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       Сильное сообщество единомышленников
@@ -76,7 +76,7 @@ export default function AboutPage() {
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Badge variant="default" className="text-xs">Качество</Badge>
+                      <Badge variant="outline" className="text-xs">Качество</Badge>
                     </div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       Высокие стандарты во всех продуктах

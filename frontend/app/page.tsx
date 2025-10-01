@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import Layout from '../components/Layout';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
+import Layout from '@/components/LayoutComponent';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { 
   Search, 
   BookOpen, 

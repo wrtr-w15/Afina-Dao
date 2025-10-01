@@ -25,6 +25,7 @@ export interface Project {
   category: string;
   startDate: string;
   deadline: string;
+  budget?: number;
   website?: string;
   telegramPost?: string;
   image?: string;
@@ -59,6 +60,7 @@ export interface CreateProjectData {
   category: string;
   startDate: string;
   deadline: string;
+  budget?: number;
   website?: string;
   telegramPost?: string;
   image?: string;

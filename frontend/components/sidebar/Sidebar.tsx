@@ -2,31 +2,17 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import LanguageSelector from '../LanguageSelector';
-import { getProjects } from '../../lib/projects';
-import { getCachedProjects, setCachedProjects, invalidateCache } from '../../lib/sidebarCache';
-import { Project } from '../../types/project';
+import LanguageSelector from '@/components/LanguageSelector';
+import { getProjects } from '@/lib/projects';
+// Removed sidebarCache import - using localStorage directly
+import { Project } from '@/types/project';
 import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react';
-
-// Simple i18n function
-const t = (key: string) => {
-  const translations: Record<string, string> = {
-    'aboutAfina': 'Информация',
-    'products': 'Продукты',
-    'productsComingSoon': 'Продукты будут добавлены позже',
-    'home': 'Home',
-    'howItWorks': 'Как это работает',
-    'ourCases': 'Наши кейсы',
-    'faq': 'FAQ',
-    'poweredBy': 'Powered By',
-    'afina': 'Afina'
-  };
-  return translations[key] || key;
-};
+import { useTranslations } from 'next-intl';
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('sidebar');
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAboutCollapsed, setIsAboutCollapsed] = useState(false);
@@ -36,7 +22,7 @@ export default function Sidebar() {
 
   useEffect(() => {
     // Проверяем кэш
-    const cachedProjects = getCachedProjects();
+    const cachedProjects = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sidebar_projects') || '[]') : [];
     if (cachedProjects) {
       setProjects(cachedProjects);
       setIsLoading(false);
@@ -51,7 +37,9 @@ export default function Sidebar() {
         setIsLoading(false);
         
         // Кэшируем проекты
-        setCachedProjects(activeProjects);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sidebar_projects', JSON.stringify(activeProjects));
+        }
       } catch (error) {
         console.error('Error loading projects:', error);
         setIsLoading(false);
@@ -128,7 +116,7 @@ export default function Sidebar() {
                         ? 'text-blue-600 dark:text-blue-400' 
                         : 'text-gray-500 dark:text-gray-400'
                     }`} />
-                    Про Afina DAO
+                    {t('aboutAfinaDAO')}
                   </button>
                 </div>
               </div>

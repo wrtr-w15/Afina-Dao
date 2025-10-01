@@ -7,10 +7,18 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { 
   ArrowLeft, 
+  ExternalLink, 
   Globe,
   Link as LinkIcon,
+  Image,
   Calendar,
-  Send
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  Send,
+  List,
+  Navigation,
+  AlignJustify
 } from 'lucide-react';
 import { Project, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from '@/types/project';
 import { getProjectById } from '@/lib/projects';
@@ -21,17 +29,7 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeBlock, setActiveBlock] = useState<number>(0);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  const [isNavigationCollapsed, setIsNavigationCollapsed] = useState(false);
 
   useEffect(() => {
     const loadProject = async () => {
@@ -177,6 +175,7 @@ export default function ProjectPage() {
         <div className="flex gap-8">
           {/* Основной контент */}
           <div className="flex-1">
+            {/* Блоки описания без границ */}
             {project.blocks && project.blocks.length > 0 && (
               <div className="space-y-8">
                 {project.blocks.map((block, index) => (
@@ -233,33 +232,70 @@ export default function ProjectPage() {
             )}
           </div>
 
-          {/* Правый сайдбар - скрывается на мобильных устройствах */}
-          {!isMobile && (
-            <div className="w-80 flex-shrink-0">
-              <div className="sticky top-24 space-y-4">
-                {project.blocks && project.blocks.length > 0 && (
-                  <div className="bg-white dark:bg-gray-800 shadow-lg p-2 rounded-lg">
+          {/* Правый сайдбар */}
+          <div className="w-80 flex-shrink-0">
+            <div className="sticky top-24 space-y-4">
+              {/* Компактная навигация */}
+              {project.blocks && project.blocks.length > 0 && (
+                <div className={`rounded-lg transition-all duration-200 ${
+                  isNavigationCollapsed 
+                    ? 'p-1' 
+                    : 'bg-white dark:bg-gray-800 shadow-lg p-2'
+                }`}>
+                  {/* Содержимое навигации */}
+                  {!isNavigationCollapsed && (
                     <nav className="px-1 pb-1 space-y-0.5">
                       {project.blocks.map((block, index) => (
-                        <button
-                          key={block.id}
-                          onClick={() => scrollToBlock(index)}
-                          className={`w-full text-left px-2 py-2.5 text-xs rounded transition-colors ${
-                            activeBlock === index
-                              ? 'text-blue-600 dark:text-blue-400 font-medium'
-                              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                        >
-                          {block.title}
-                        </button>
+                        <div key={block.id} className="flex items-center justify-between">
+                          <button
+                            onClick={() => scrollToBlock(index)}
+                            className={`flex-1 text-left px-2 py-2.5 text-xs rounded transition-colors ${
+                              activeBlock === index
+                                ? 'text-blue-600 dark:text-blue-400 font-medium'
+                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            {block.title}
+                          </button>
+                          {index === 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIsNavigationCollapsed(!isNavigationCollapsed)}
+                              className="ml-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 transition-all duration-200 p-0 h-10 w-10"
+                              title="Свернуть навигацию"
+                            >
+                              <ChevronLeft className="h-10 w-10" />
+                            </Button>
+                          )}
+                        </div>
                       ))}
                     </nav>
-                  </div>
-                )}
-              </div>
+                  )}
+                  
+                  {/* Кнопка разворачивания когда свернуто - на том же месте */}
+                  {isNavigationCollapsed && (
+                    <nav className="px-1 pb-1 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1"></div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setIsNavigationCollapsed(false)}
+                          className="ml-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-gray-500 transition-all duration-200 p-0 h-10 w-10"
+                          title="Развернуть навигацию"
+                        >
+                          <List className="h-10 w-10" />
+                        </Button>
+                      </div>
+                    </nav>
+                  )}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
+
 
         {/* Ссылки проекта */}
         {(project.website || project.telegramPost) && (

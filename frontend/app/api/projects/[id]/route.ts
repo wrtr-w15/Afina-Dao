@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 import { dbConfig } from '../../../../lib/database';
-import { invalidateCache } from '../../../../lib/sidebarCache';
 
 // GET /api/projects/[id] - получить проект по ID
 export async function GET(
@@ -14,22 +13,15 @@ export async function GET(
     
     const [projects] = await connection.execute(`
       SELECT p.*, 
-             COALESCE(
-               JSON_ARRAYAGG(
-                 CASE 
-                   WHEN pb.id IS NOT NULL THEN
-                     JSON_OBJECT(
-                       'id', pb.id,
-                       'title', pb.title,
-                       'content', pb.content,
-                       'gifUrl', pb.gif_url,
-                       'gifCaption', pb.gif_caption,
-                       'links', COALESCE(links_data.links, JSON_ARRAY())
-                     )
-                   ELSE NULL
-                 END
-               ), 
-               JSON_ARRAY()
+             JSON_ARRAYAGG(
+               JSON_OBJECT(
+                 'id', pb.id,
+                 'title', pb.title,
+                 'content', pb.content,
+                 'gifUrl', pb.gif_url,
+                 'gifCaption', pb.gif_caption,
+                 'links', COALESCE(links_data.links, JSON_ARRAY())
+               )
              ) as blocks
       FROM projects p
       LEFT JOIN project_blocks pb ON p.id = pb.project_id
@@ -66,25 +58,17 @@ export async function GET(
           description: project.description,
           status: project.status,
           category: project.category,
-          budget: project.budget,
           website: project.website,
           telegramPost: project.telegram_post,
           image: project.image,
-          blocks: project.blocks ? project.blocks
-            .filter((block: any) => block.id)
-            .sort((a: any, b: any) => {
-              // Сортируем блоки по дате создания (если есть поле created_at)
-              // Пока что возвращаем в том порядке, в котором пришли из БД
-              return 0;
-            })
-            .map((block: any) => ({
-              id: block.id,
-              title: block.title,
-              content: block.content,
-              gifUrl: block.gifUrl,
-              gifCaption: block.gifCaption,
-              links: block.links || []
-            })) : [],
+          blocks: project.blocks ? project.blocks.filter((block: any) => block.id).map((block: any) => ({
+            id: block.id,
+            title: block.title,
+            content: block.content,
+            gifUrl: block.gifUrl,
+            gifCaption: block.gifCaption,
+            links: block.links || []
+          })) : [],
           createdAt: project.created_at,
           updatedAt: project.updated_at
         };
@@ -92,14 +76,7 @@ export async function GET(
     return NextResponse.json(formattedProject);
   } catch (error) {
     console.error('Error fetching project:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    });
-    return NextResponse.json({ 
-      error: 'Failed to fetch project',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch project' }, { status: 500 });
   }
 }
 
@@ -110,11 +87,6 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    
-    if (!id) {
-      return NextResponse.json({ error: 'Project ID is required' }, { status: 400 });
-    }
-    
     const data = await request.json();
     const connection = await mysql.createConnection(dbConfig);
     
@@ -176,9 +148,6 @@ export async function PUT(
 
     await connection.end();
 
-    // Инвалидируем кэш сайдбара
-    invalidateCache();
-
     return NextResponse.json({ message: 'Project updated successfully' });
   } catch (error) {
     console.error('Error updating project:', error);
@@ -199,9 +168,6 @@ export async function DELETE(
     await connection.execute(`DELETE FROM projects WHERE id = ?`, [id]);
 
     await connection.end();
-
-    // Инвалидируем кэш сайдбара
-    invalidateCache();
 
     return NextResponse.json({ message: 'Project deleted successfully' });
   } catch (error) {

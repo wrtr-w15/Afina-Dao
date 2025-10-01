@@ -45,21 +45,6 @@ export const getProjects = async (): Promise<Project[]> => {
   }
 };
 
-// Поиск проектов
-export const searchProjects = async (query: string): Promise<Project[]> => {
-  try {
-    if (!query.trim()) {
-      return [];
-    }
-    
-    const response = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(query.trim())}`);
-    return await handleApiResponse(response);
-  } catch (error) {
-    console.error('Error searching projects:', error);
-    return [];
-  }
-};
-
 // Получить проект по ID
 export const getProjectById = async (id: string): Promise<Project | null> => {
   try {
@@ -112,6 +97,7 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
       category: data.category,
       startDate: data.startDate,
       deadline: data.deadline,
+      budget: data.budget,
       website: data.website,
       telegramPost: data.telegramPost,
       image: data.image,
@@ -150,12 +136,8 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
 };
 
 // Обновить проект
-export const updateProject = async (id: string, data: UpdateProjectData): Promise<Project | null> => {
+export const updateProject = async (data: UpdateProjectData): Promise<Project | null> => {
   try {
-    if (!id) {
-      throw new Error('Project ID is required');
-    }
-    
     // Создаем чистый объект без циклических ссылок
     const cleanData = {
       name: data.name,
@@ -165,6 +147,7 @@ export const updateProject = async (id: string, data: UpdateProjectData): Promis
       category: data.category,
       startDate: data.startDate,
       deadline: data.deadline,
+      budget: data.budget,
       website: data.website,
       telegramPost: data.telegramPost,
       image: data.image,
@@ -183,7 +166,7 @@ export const updateProject = async (id: string, data: UpdateProjectData): Promis
       })) || []
     };
 
-    const response = await fetch(`${API_BASE_URL}/api/projects/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/projects/${data.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -194,7 +177,7 @@ export const updateProject = async (id: string, data: UpdateProjectData): Promis
     await handleApiResponse(response);
     
     // Возвращаем обновленный проект
-    return await getProjectById(id);
+    return await getProjectById(data.id);
   } catch (error) {
     console.error('Error updating project:', error);
     return null;
@@ -228,6 +211,17 @@ export const getProjectsByCategory = async (category: ProjectCategory): Promise<
   return projects.filter(project => project.category === category);
 };
 
+// Поиск проектов
+export const searchProjects = async (query: string): Promise<Project[]> => {
+  const projects = await getProjects();
+  const lowercaseQuery = query.toLowerCase();
+  
+  return projects.filter(project => 
+    project.name.toLowerCase().includes(lowercaseQuery) ||
+    project.description.toLowerCase().includes(lowercaseQuery) ||
+    project.sidebarName.toLowerCase().includes(lowercaseQuery)
+  );
+};
 
 // Получить статистику проектов
 export const getProjectsStats = async () => {

@@ -1,0 +1,53 @@
+{
+  "common": {
+    "welcome": "Ласкаво просимо до Afina DAO Wiki",
+    "welcomeDescription": "Ваша комплексна база знань про все, що стосується Afina DAO",
+    "searchPlaceholder": "Пошук статей...",
+    "categories": "Категорії",
+    "recentArticles": "Останні статті",
+    "searchResults": "Результати пошуку",
+    "noSearchResults": "Статті за вашим запитом не знайдені",
+    "noArticles": "Статті недоступні",
+    "navigation": "Навігація",
+    "home": "Головна",
+    "articles": "Статті",
+    "search": "Пошук",
+    "gettingStarted": "Початок роботи",
+    "advancedTopics": "Розширені теми",
+    "settings": "Налаштування",
+    "profile": "Профіль",
+    "helpSupport": "Допомога та підтримка",
+    "expandSidebar": "Розгорнути бічну панель",
+    "collapseSidebar": "Згорнути бічну панель",
+    "user": "Користувач",
+    "installation": "Встановлення",
+    "configuration": "Конфігурація",
+    "performance": "Продуктивність",
+    "security": "Безпека",
+    "viewAll": "Показати все",
+    "admin": "Адмін",
+    "login": "Увійти",
+    "logout": "Вийти",
+    "articleNotFound": "Статтю не знайдено",
+    "articleNotFoundDescription": "Стаття, яку ви шукаєте, не існує або була видалена.",
+    "backToHome": "Повернутися на головну",
+    "share": "Поділитися",
+    "linkCopied": "Посилання скопійовано в буфер обміну"
+  },
+  "sidebar": {
+    "aboutAfina": "Інформація",
+    "products": "Продукти",
+    "productsComingSoon": "Продукти будуть додані пізніше",
+    "aboutAfinaDAO": "Про Afina DAO",
+    "poweredBy": "Powered By",
+    "afina": "Afina"
+  },
+  "language": {
+    "selectLanguage": "Оберіть мову"
+  },
+  "search": {
+    "placeholder": "Пошук",
+    "noResults": "Нічого не знайдено",
+    "searching": "Пошук..."
+  }
+}

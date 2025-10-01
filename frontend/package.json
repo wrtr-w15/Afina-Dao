@@ -18,6 +18,7 @@
     "lucide-react": "^0.294.0",
     "mysql2": "^3.15.1",
     "next": "^15.5.4",
+    "next-intl": "^4.3.9",
     "react": "^18",
     "react-dom": "^18",
     "react-hook-form": "^7.48.2",

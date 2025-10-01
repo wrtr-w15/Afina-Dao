@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import Layout from '../../../../components/Layout';
-import { Card } from '../../../../components/ui/Card';
-import { Button } from '../../../../components/ui/Button';
-import { Input } from '../../../../components/ui/Input';
-import { Textarea } from '../../../../components/ui/Textarea';
-import { Select } from '../../../../components/ui/Select';
-import { Badge } from '../../../../components/ui/Badge';
+import Layout from '@/components/LayoutComponent';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Select } from '@/components/ui/Select';
+import { Badge } from '@/components/ui/Badge';
 import { 
   ArrowLeft, 
   Save, 

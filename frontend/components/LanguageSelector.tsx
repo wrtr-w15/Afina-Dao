@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Globe } from 'lucide-react';
 import { Popover } from './ui/Popover';
 import { Button } from './ui/Button';
+import { useTranslations } from 'next-intl';
 
 interface Language {
   code: string;
@@ -19,11 +20,30 @@ const languages: Language[] = [
 
 export default function LanguageSelector() {
   const [currentLanguage, setCurrentLanguage] = useState<Language>(languages[1]); // Default to Russian
+  const t = useTranslations('language');
+
+  useEffect(() => {
+    // Загружаем сохраненный язык из localStorage
+    const savedLanguage = localStorage.getItem('selectedLanguage');
+    if (savedLanguage) {
+      const language = languages.find(lang => lang.code === savedLanguage);
+      if (language) {
+        setCurrentLanguage(language);
+      }
+    }
+  }, []);
 
   const handleLanguageChange = (language: Language) => {
     setCurrentLanguage(language);
-    // TODO: Implement language switching logic
-    console.log('Language changed to:', language.code);
+    
+    // Сохраняем выбранный язык в localStorage
+    localStorage.setItem('selectedLanguage', language.code);
+    
+    // Устанавливаем cookie для серверной стороны
+    document.cookie = `NEXT_LOCALE=${language.code}; path=/; max-age=31536000`;
+    
+    // Перезагружаем страницу для применения изменений
+    window.location.reload();
   };
 
   return (
@@ -32,7 +52,7 @@ export default function LanguageSelector() {
         <div className="w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
           <div className="p-3">
             <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">
-              Выберите язык
+              {t('selectLanguage')}
             </h3>
             <div className="space-y-2">
               {languages.map((language) => (

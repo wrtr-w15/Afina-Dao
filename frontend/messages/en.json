@@ -1,0 +1,53 @@
+{
+  "common": {
+    "welcome": "Welcome to Afina DAO Wiki",
+    "welcomeDescription": "Your comprehensive knowledge base for all things Afina DAO",
+    "searchPlaceholder": "Search articles...",
+    "categories": "Categories",
+    "recentArticles": "Recent Articles",
+    "searchResults": "Search Results",
+    "noSearchResults": "No articles found matching your search",
+    "noArticles": "No articles available",
+    "navigation": "Navigation",
+    "home": "Home",
+    "articles": "Articles",
+    "search": "Search",
+    "gettingStarted": "Getting Started",
+    "advancedTopics": "Advanced Topics",
+    "settings": "Settings",
+    "profile": "Profile",
+    "helpSupport": "Help & Support",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "user": "User",
+    "installation": "Installation",
+    "configuration": "Configuration",
+    "performance": "Performance",
+    "security": "Security",
+    "viewAll": "View All",
+    "admin": "Admin",
+    "login": "Login",
+    "logout": "Logout",
+    "articleNotFound": "Article Not Found",
+    "articleNotFoundDescription": "The article you're looking for doesn't exist or has been removed.",
+    "backToHome": "Back to Home",
+    "share": "Share",
+    "linkCopied": "Link copied to clipboard"
+  },
+  "sidebar": {
+    "aboutAfina": "Information",
+    "products": "Products",
+    "productsComingSoon": "Products will be added later",
+    "aboutAfinaDAO": "About Afina DAO",
+    "poweredBy": "Powered By",
+    "afina": "Afina"
+  },
+  "language": {
+    "selectLanguage": "Select language"
+  },
+  "search": {
+    "placeholder": "Search",
+    "noResults": "Nothing found",
+    "searching": "Searching..."
+  }
+}

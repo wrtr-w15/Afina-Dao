@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 import { dbConfig } from '../../../lib/database';
 import { Project, CreateProjectData, ProjectBlock, ProjectLink } from '../../../types/project';
-import { invalidateCache } from '../../../lib/sidebarCache';
 
 // GET /api/projects - получить все проекты
 export async function GET() {
@@ -117,9 +116,6 @@ export async function POST(request: NextRequest) {
     }
 
     await connection.end();
-
-    // Инвалидируем кэш сайдбара
-    invalidateCache();
 
     return NextResponse.json({ id: projectId, message: 'Project created successfully' });
   } catch (error) {
