@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import AdminSidebar from './AdminSidebar';
 
 interface AdminLayoutProps {
@@ -14,10 +15,23 @@ export default function AdminLayout({
   title = "Admin - Afina DAO Wiki",
   description = "Панель администратора"
 }: AdminLayoutProps) {
+  const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+      router.push('/admin/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      router.push('/admin/login');
+    }
   };
 
   return (
@@ -26,6 +40,7 @@ export default function AdminLayout({
       <AdminSidebar 
         isCollapsed={sidebarCollapsed}
         onToggle={toggleSidebar}
+        onLogout={handleLogout}
       />
 
       {/* Main Content */}

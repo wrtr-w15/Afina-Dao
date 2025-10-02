@@ -30,6 +30,8 @@ export default function Header({
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [lastSearchQuery, setLastSearchQuery] = useState('');
   const [mobileProjects, setMobileProjects] = useState<Project[]>([]);
   const [isMobileLoading, setIsMobileLoading] = useState(false);
   const [isAboutCollapsed, setIsAboutCollapsed] = useState(false);
@@ -64,6 +66,7 @@ export default function Header({
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchQuery(value);
+    setLastSearchQuery(value);
   };
 
   // Debounced search effect
@@ -88,12 +91,42 @@ export default function Header({
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  const loadMobileProjects = async () => {
+    setIsMobileLoading(true);
+    try {
+      const projects = await getProjects();
+      setMobileProjects(projects.filter(project => project.status === 'active'));
+    } catch (error) {
+      console.error('Error loading mobile projects:', error);
+    } finally {
+      setIsMobileLoading(false);
+    }
+  };
+
   const handleMobileMenuToggle = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
+    if (!isMobileMenuOpen) {
+      loadMobileProjects();
+    }
+  };
+
+  const handleMobileSearchToggle = () => {
+    if (!isMobileSearchOpen) {
+      // При открытии восстанавливаем последний запрос
+      setSearchQuery(lastSearchQuery);
+    }
+    setIsMobileSearchOpen(!isMobileSearchOpen);
   };
 
   const handleMobileMenuClose = () => {
     setIsMobileMenuOpen(false);
+    setIsMobileSearchOpen(false);
+  };
+
+  const handleMobileSearchClose = () => {
+    // Сохраняем текущий запрос перед закрытием
+    setLastSearchQuery(searchQuery);
+    setIsMobileSearchOpen(false);
   };
 
   const handleSearchResultClick = (result: SearchResult) => {
@@ -253,7 +286,7 @@ export default function Header({
 
               {/* Search Icon - показывается на маленьких экранах */}
               <button
-                onClick={handleMobileMenuToggle}
+                onClick={handleMobileSearchToggle}
                 className="sm:hidden p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                 title="Search"
               >
@@ -273,6 +306,102 @@ export default function Header({
           </div>
         </div>
       </header>
+
+      {/* Mobile Search Overlay */}
+      {isMobileSearchOpen && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 lg:hidden">
+          <div className="fixed inset-0 bg-white dark:bg-gray-900">
+            {/* Mobile Search Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center space-x-2">
+                <Search className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Поиск
+                </h1>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleMobileSearchClose}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Mobile Search Content */}
+            <div className="p-4">
+              <form onSubmit={handleSearch}>
+                <Input
+                  type="text"
+                  placeholder={t('placeholder')}
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  leftIcon={<Search className="h-4 w-4 text-gray-400" />}
+                  className="w-full mb-4"
+                />
+              </form>
+              
+              {/* Search Results */}
+              {isSearching ? (
+                <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  {t('searching')}...
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="space-y-2">
+                  {searchResults.map((result) => (
+                    <button
+                      key={`${result.type}-${result.id}`}
+                      onClick={() => {
+                        handleSearchResultClick(result);
+                        handleMobileMenuClose();
+                      }}
+                      className="w-full p-4 text-left hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    >
+                      <div className="flex items-center space-x-3">
+                        {result.image && (
+                          <img
+                            src={result.image}
+                            alt={result.title}
+                            className="w-10 h-10 rounded object-cover"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium text-gray-900 dark:text-white truncate">
+                              {result.title}
+                            </span>
+                            <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
+                              Проект
+                            </span>
+                          </div>
+                          {result.description && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                              {result.description}
+                            </p>
+                          )}
+                          {result.category && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                              {result.category}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : searchQuery.trim() ? (
+                <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  {t('noResults')}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  Введите запрос для поиска
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
@@ -297,20 +426,6 @@ export default function Header({
               >
                 <X className="h-5 w-5" />
               </Button>
-            </div>
-
-            {/* Mobile Search */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-              <form onSubmit={handleSearch}>
-                <Input
-                  type="text"
-                  placeholder={t('placeholder')}
-                  value={searchQuery}
-                  onChange={handleSearchChange}
-                  leftIcon={<Search className="h-4 w-4 text-gray-400" />}
-                  className="w-full"
-                />
-              </form>
             </div>
 
             {/* Mobile Sidebar Content */}

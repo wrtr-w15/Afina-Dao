@@ -1,13 +1,13 @@
 {
   "common": {
     "welcome": "Welcome to Afina DAO Wiki",
-    "welcomeDescription": "Your comprehensive knowledge base for all things Afina DAO",
+    "welcomeDescription": "Your comprehensive knowledge base for everything related to Afina DAO",
     "searchPlaceholder": "Search articles...",
     "categories": "Categories",
     "recentArticles": "Recent Articles",
     "searchResults": "Search Results",
-    "noSearchResults": "No articles found matching your search",
-    "noArticles": "No articles available",
+    "noSearchResults": "No articles found for your query",
+    "noArticles": "Articles unavailable",
     "navigation": "Navigation",
     "home": "Home",
     "articles": "Articles",
@@ -28,17 +28,19 @@
     "admin": "Admin",
     "login": "Login",
     "logout": "Logout",
-    "articleNotFound": "Article Not Found",
-    "articleNotFoundDescription": "The article you're looking for doesn't exist or has been removed.",
-    "backToHome": "Back to Home",
+    "articleNotFound": "Article not found",
+    "articleNotFoundDescription": "The article you are looking for does not exist or has been deleted.",
+    "backToHome": "Back to home",
     "share": "Share",
-    "linkCopied": "Link copied to clipboard"
+    "linkCopied": "Link copied to clipboard",
+    "loading": "Loading..."
   },
   "sidebar": {
     "aboutAfina": "Information",
     "products": "Products",
     "productsComingSoon": "Products will be added later",
     "aboutAfinaDAO": "About Afina DAO",
+    "pricing": "Pricing",
     "poweredBy": "Powered By",
     "afina": "Afina"
   },
@@ -49,5 +51,76 @@
     "placeholder": "Search",
     "noResults": "Nothing found",
     "searching": "Searching..."
+  },
+  "about": {
+    "title": "About Afina DAO",
+    "description": "Information about Afina DAO decentralized autonomous organization",
+    "header": {
+      "title": "About Afina DAO",
+      "subtitle": "Comprehensive support for crypto projects with full control and process stability"
+    },
+    "services": {
+      "title": "Our Services",
+      "description1": "Afina DAO provides comprehensive support for crypto projects. Our clients choose a project, and for a fixed monthly fee, it is managed on our servers until TGE.",
+      "description2": "We work with testnets, mainnets, and other crypto activities, ensuring full control and process stability."
+    },
+    "security": {
+      "title": "Security is our priority",
+      "point1": "Only Afina DAO team members have access to wallets.",
+      "point2": "An insurance fund has been created for unforeseen situations.",
+      "point3": "After cooperation ends, all client data is completely deleted from our servers."
+    },
+    "responsibilities": {
+      "title": "Areas of Responsibility",
+      "client": {
+        "title": "Client's area of responsibility:",
+        "kyc": "KYC completion",
+        "wallets": "Wallet funding",
+        "claim": "Token claiming"
+      },
+      "our": {
+        "title": "Our area of responsibility:",
+        "operations": "Operational part",
+        "support": "Project support",
+        "access": "Restricted server access"
+      },
+      "note": "Server access is strictly limited and provided only to Afina DAO specialists."
+    },
+    "contact": {
+      "title": "Join Us",
+      "subtitle": "Become part of the revolution in automation and decentralized technologies",
+      "joinButton": "Join DAO",
+      "learnMoreButton": "Learn More"
+    }
+  },
+  "pricingPage": {
+    "title": "Pricing Calculator",
+    "description": "Specify the number of accounts and projects to calculate the cost of using the platform",
+    "calculationParameters": "Calculation Parameters",
+    "accountsCount": "Number of Accounts",
+    "projectsCount": "Number of Projects",
+    "minimumAccounts": "Minimum 150 accounts",
+    "minimumProjects": "Minimum 1 project",
+    "cost": "Cost",
+    "firstMonth": "First Month",
+    "subsequentMonths": "Subsequent Months",
+    "monthlySubscription": "Monthly Subscription",
+    "installationFee": "Installation",
+    "totalFirstMonth": "Total for First Month",
+    "totalPerMonth": "Total per Month",
+    "youSave": "You save",
+    "thanksToDiscount": "thanks to discount for",
+    "importantInfo": "Important Information",
+    "firstMonthInfo": "First month: includes installation cost ($100 per project) + monthly subscription",
+    "subsequentMonthsInfo": "Subsequent months: only monthly subscription without installation cost",
+    "discountsInfo": "Discounts: automatically applied when the number of projects increases",
+    "newProjectsInfo": "New projects: when adding a new project, an additional installation fee ($100) is charged",
+    "discount": "Discount",
+    "forProjects": "for",
+    "project": "project",
+    "projects": "projects",
+    "projects2": "projects",
+    "accounts": "accounts",
+    "specifyParameters": "Specify parameters to calculate the cost"
   }
 }

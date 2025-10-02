@@ -1,20 +1,16 @@
-const createNextIntlPlugin = require('next-intl/plugin');
-
-const withNextIntl = createNextIntlPlugin('./i18n.ts');
+const withNextIntl = require('next-intl/plugin')(
+  // This is the default (also the `src` folder is supported out of the box)
+  './i18n.ts'
+);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  experimental: {
+    appDir: true,
+  },
   images: {
     domains: ['localhost'],
   },
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
-  },
-  // Явно указываем базовый URL для статических файлов
-  assetPrefix: process.env.NODE_ENV === 'production' ? '' : '',
-  // Отключаем кэширование в development
-  generateEtags: false,
 };
 
 module.exports = withNextIntl(nextConfig);

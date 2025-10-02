@@ -15,7 +15,7 @@ interface Language {
 const languages: Language[] = [
   { code: 'en', name: 'English', shortName: 'EN' },
   { code: 'ru', name: 'Русский', shortName: 'RU' },
-  { code: 'uk', name: 'Українська', shortName: 'UA' },
+  { code: 'ua', name: 'Українська', shortName: 'UA' },
 ];
 
 export default function LanguageSelector() {

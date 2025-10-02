@@ -2,155 +2,159 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import AdminLayout from '@/components/admin/AdminLayout';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { 
+  BarChart3, 
+  Users, 
+  FolderOpen, 
+  Settings,
+  ArrowRight,
+  TrendingUp,
+  Activity
+} from 'lucide-react';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    document.cookie = 'admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    router.push('/admin/login');
-  };
-
-  const toggleSidebar = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-  };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Admin Sidebar */}
-      <div className={`fixed left-0 top-0 bottom-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-40 flex flex-col ${
-        sidebarCollapsed ? 'w-12' : 'w-64'
-      }`}>
-        {/* Header */}
-        <div className={`border-b border-gray-200 dark:border-gray-700 flex-shrink-0 ${sidebarCollapsed ? 'p-2' : 'p-3'}`}>
-          <div className="flex items-center justify-between">
-            {!sidebarCollapsed && (
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Админ-панель
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Afina DAO
-                </p>
+    <AdminLayout>
+      <div className="p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              Панель администратора
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Управление проектами, категориями и настройками
+            </p>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <Card className="p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                  <BarChart3 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Всего проектов</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">12</p>
+                </div>
               </div>
-            )}
-            <button
-              onClick={toggleSidebar}
-              className="p-1.5 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              {sidebarCollapsed ? '→' : '←'}
-            </button>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                  <Activity className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Активных</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">8</p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
+                  <TrendingUp className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Черновиков</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">3</p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+                  <FolderOpen className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Категорий</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">5</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Быстрые действия
+              </h3>
+              <div className="space-y-3">
+                <Button
+                  onClick={() => router.push('/admin/projects/new')}
+                  variant="secondary"
+                  className="w-full justify-start p-3 h-auto"
+                >
+                  <div className="flex items-center w-full">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg mr-3">
+                      <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium">Создать проект</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Добавить новый проект</p>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-gray-400" />
+                  </div>
+                </Button>
+
+                <Button
+                  onClick={() => router.push('/admin/categories/new')}
+                  variant="secondary"
+                  className="w-full justify-start p-3 h-auto"
+                >
+                  <div className="flex items-center w-full">
+                    <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg mr-3">
+                      <FolderOpen className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium">Создать категорию</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Добавить новую категорию</p>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-gray-400" />
+                  </div>
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Последние действия
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg mr-3">
+                    <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900 dark:text-white">Создан проект "Новый проект"</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">2 часа назад</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg mr-3">
+                    <Activity className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900 dark:text-white">Обновлена категория "Разработка"</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">4 часа назад</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
           </div>
         </div>
-
-        {/* Navigation */}
-        <nav className={`flex-1 overflow-y-auto space-y-1 ${sidebarCollapsed ? 'p-1' : 'p-2'}`}>
-          <button
-            onClick={() => router.push('/admin')}
-            className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-          >
-            <span>📊</span>
-            {!sidebarCollapsed && <span>Панель управления</span>}
-          </button>
-          
-          <button
-            onClick={() => router.push('/admin/projects')}
-            className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-          >
-            <span>📁</span>
-            {!sidebarCollapsed && <span>Проекты</span>}
-          </button>
-          
-          <button
-            onClick={() => router.push('/admin/categories')}
-            className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-          >
-            <span>🏷️</span>
-            {!sidebarCollapsed && <span>Категории</span>}
-          </button>
-        </nav>
-
-        {/* Footer */}
-        <div className={`flex-shrink-0 ${sidebarCollapsed ? 'p-1' : 'p-2'}`}>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          >
-            <span>🚪</span>
-            {!sidebarCollapsed && <span>Выйти</span>}
-          </button>
-        </div>
       </div>
-
-      {/* Main Content */}
-      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-12' : 'ml-64'}`}>
-        <div className="min-h-screen bg-white dark:bg-gray-900">
-          <main className="p-6">
-            <div className="max-w-7xl mx-auto">
-              <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                  Панель управления
-                </h1>
-                <p className="mt-2 text-gray-600 dark:text-gray-400">
-                  Добро пожаловать в админ панель Afina DAO
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                      <span className="text-2xl">📁</span>
-                    </div>
-                    <div className="ml-4">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Проекты
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Управление проектами
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <button
-                      onClick={() => router.push('/admin/projects')}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    >
-                      Перейти к проектам
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center">
-                    <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                      <span className="text-2xl">🏷️</span>
-                    </div>
-                    <div className="ml-4">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Категории
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Управление категориями
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <button
-                      onClick={() => router.push('/admin/categories')}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    >
-                      Перейти к категориям
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </main>
-        </div>
-      </div>
-    </div>
+    </AdminLayout>
   );
 }

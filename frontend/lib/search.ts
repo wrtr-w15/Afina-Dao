@@ -28,7 +28,9 @@ export async function searchProjects(query: string): Promise<SearchResult[]> {
       const matchesName = project.name.toLowerCase().includes(searchQuery) ||
                         project.sidebarName?.toLowerCase().includes(searchQuery);
       const matchesDescription = project.description?.toLowerCase().includes(searchQuery);
-      const matchesCategory = project.category?.name.toLowerCase().includes(searchQuery);
+      const matchesCategory = typeof project.category === 'string' 
+        ? project.category.toLowerCase().includes(searchQuery)
+        : (project.category as any)?.name?.toLowerCase().includes(searchQuery);
 
       if (matchesName || matchesDescription || matchesCategory) {
         results.push({
@@ -36,7 +38,9 @@ export async function searchProjects(query: string): Promise<SearchResult[]> {
           type: 'project',
           title: project.sidebarName || project.name,
           description: project.description,
-          category: project.category?.name,
+          category: typeof project.category === 'string' 
+            ? project.category 
+            : (project.category as any)?.name,
           image: project.image,
           url: `/project/${project.id}`
         });

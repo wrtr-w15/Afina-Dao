@@ -17,9 +17,10 @@ import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
 interface AdminSidebarProps {
   isCollapsed?: boolean;
   onToggle?: () => void;
+  onLogout?: () => void;
 }
 
-export default function AdminSidebar({ isCollapsed = false, onToggle }: AdminSidebarProps) {
+export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }: AdminSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
@@ -33,9 +34,13 @@ export default function AdminSidebar({ isCollapsed = false, onToggle }: AdminSid
   }
 
   const handleLogout = () => {
-    logoutAdmin();
-    removeAdminTokenFromCookies();
-    router.push('/admin/login');
+    if (onLogout) {
+      onLogout();
+    } else {
+      logoutAdmin();
+      removeAdminTokenFromCookies();
+      router.push('/admin/login');
+    }
   };
 
   const adminMenuItems = [

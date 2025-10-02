@@ -3,7 +3,7 @@ import { Montserrat } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
+import { getMessages, getLocale } from 'next-intl/server';
 
 const montserrat = Montserrat({ subsets: ['latin'] });
 
@@ -17,10 +17,11 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const locale = await getLocale();
   const messages = await getMessages();
-
+  
   return (
-    <html lang="ru">
+    <html lang={locale}>
       <body className={montserrat.className}>
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider>

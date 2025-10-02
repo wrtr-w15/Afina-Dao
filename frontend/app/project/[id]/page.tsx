@@ -22,15 +22,18 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(true);
   const [activeBlock, setActiveBlock] = useState<number>(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+    const checkScreenSize = () => {
+      const width = window.innerWidth;
+      setIsMobile(width < 768);
+      setIsCompact(width < 1024 && width >= 768);
     };
     
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
   useEffect(() => {
@@ -146,7 +149,7 @@ export default function ProjectPage() {
       showSidebar={true}
     >
       <div className="space-y-8">
-        {/* Банер проекта */}
+        {/* Банер проекта - на всю ширину */}
         {project.image && (
           <div className="relative w-full h-64 md:h-80 rounded-lg overflow-hidden">
             <img 
@@ -157,8 +160,8 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {/* Заголовок */}
-        <div className="mb-8">
+        {/* Заголовок - центрированный */}
+        <div className="mb-8 max-w-7xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
             {project.name}
           </h1>
@@ -173,12 +176,26 @@ export default function ProjectPage() {
           </div>
         </div>
 
-        {/* Основной контент с сайдбаром */}
-        <div className="flex gap-8">
-          {/* Основной контент */}
-          <div className="flex-1">
-            {project.blocks && project.blocks.length > 0 && (
-              <div className="space-y-8">
+        {/* Основной контент с сайдбаром - центрированный */}
+        <div className="flex gap-8 max-w-7xl mx-auto">
+          {/* Основной контент - центрированный */}
+          <div className="flex-1 max-w-4xl pr-8">
+            <div className="space-y-8">
+              {/* Описание проекта */}
+              {project.description && (
+                <div className="border-b border-gray-200 dark:border-gray-700 pb-8">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+                    Описание
+                  </h2>
+                  <div className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {project.description}
+                  </div>
+                </div>
+              )}
+              
+              {/* Блоки проекта */}
+              {project.blocks && project.blocks.length > 0 && (
+                <div className="space-y-8">
                 {project.blocks.map((block, index) => (
                   <div key={block.id} id={`block-${index}`} className="space-y-4 scroll-mt-20">
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -229,13 +246,14 @@ export default function ProjectPage() {
                     )}
                   </div>
                 ))}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Правый сайдбар - скрывается на мобильных устройствах */}
           {!isMobile && (
-            <div className="w-80 flex-shrink-0">
+            <div className={`flex-shrink-0 ${isCompact ? 'w-48' : 'w-80'}`}>
               <div className="sticky top-24 space-y-4">
                 {project.blocks && project.blocks.length > 0 && (
                   <div className="bg-white dark:bg-gray-800 shadow-lg p-2 rounded-lg">
@@ -244,13 +262,20 @@ export default function ProjectPage() {
                         <button
                           key={block.id}
                           onClick={() => scrollToBlock(index)}
-                          className={`w-full text-left px-2 py-2.5 text-xs rounded transition-colors ${
+                          className={`w-full text-left px-2 py-2.5 ${isCompact ? 'text-xs' : 'text-xs'} rounded transition-colors ${
                             activeBlock === index
                               ? 'text-blue-600 dark:text-blue-400 font-medium'
                               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
                           }`}
+                          title={isCompact ? block.title : undefined}
                         >
-                          {block.title}
+                          {isCompact ? (
+                            <span className="truncate block">
+                              {block.title.length > 20 ? block.title.substring(0, 20) + '...' : block.title}
+                            </span>
+                          ) : (
+                            block.title
+                          )}
                         </button>
                       ))}
                     </nav>
@@ -261,9 +286,9 @@ export default function ProjectPage() {
           )}
         </div>
 
-        {/* Ссылки проекта */}
+        {/* Ссылки проекта - центрированные */}
         {(project.website || project.telegramPost) && (
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-8 max-w-7xl mx-auto">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               Ссылки проекта
             </h2>
