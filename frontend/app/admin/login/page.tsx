@@ -67,7 +67,7 @@ export default function AdminLoginPage() {
 
     const checkStatus = async () => {
       try {
-        const response = await fetch(`/api/auth/confirm?requestId=${requestId}`);
+        const response = await fetch(`/api/auth?requestId=${requestId}`);
         
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -79,10 +79,15 @@ export default function AdminLoginPage() {
           setMessage({ type: 'success', text: 'Access approved! Redirecting...' });
           setTimeout(() => {
             router.push('/admin');
-          }, 2000);
+          }, 1000);
           return;
         } else if (data.success === false) {
           setMessage({ type: 'error', text: 'Access denied by administrator.' });
+          setIsWaitingForConfirmation(false);
+          setRequestId(null);
+          return;
+        } else if (data.status === 'expired') {
+          setMessage({ type: 'error', text: 'Request expired. Please try again.' });
           setIsWaitingForConfirmation(false);
           setRequestId(null);
           return;
