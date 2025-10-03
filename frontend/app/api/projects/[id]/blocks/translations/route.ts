@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 import { dbConfig } from '@/lib/database';
+import { validateUUIDParam, applyRateLimit, logSuspiciousActivity } from '@/lib/security-middleware';
+import { validateContentBlock } from '@/lib/validation';
 
 // POST /api/projects/[id]/blocks/translations - сохранить переводы блоков
 export async function POST(
@@ -8,19 +10,42 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting
+    const rateLimitResult = applyRateLimit(request, 20, 60000); // 20 запросов в минуту
+    if (rateLimitResult) return rateLimitResult;
+    
     const { id: projectId } = await params;
+    
+    // Валидация UUID проекта
+    const uuidValidation = validateUUIDParam(projectId, 'project ID');
+    if (uuidValidation) {
+      logSuspiciousActivity(request, 'Invalid project ID format in blocks translations', { projectId });
+      return uuidValidation;
+    }
+    
     const data = await request.json();
     
     console.log('Saving block translations for project:', projectId);
     console.log('Received data:', JSON.stringify(data, null, 2));
     
-    const connection = await mysql.createConnection(dbConfig);
-    
     // data.blocks должен быть массивом блоков с переводами
     if (!data.blocks || !Array.isArray(data.blocks)) {
-      await connection.end();
-      return NextResponse.json({ error: 'Invalid data format' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid data format: blocks must be an array' }, { status: 400 });
     }
+    
+    // Валидация каждого блока
+    for (let i = 0; i < data.blocks.length; i++) {
+      const block = data.blocks[i];
+      const blockValidation = validateContentBlock(block);
+      if (!blockValidation.valid) {
+        console.error(`Block ${i} validation failed:`, blockValidation.error);
+        return NextResponse.json({ 
+          error: `Block ${i + 1}: ${blockValidation.error}` 
+        }, { status: 400 });
+      }
+    }
+    
+    const connection = await mysql.createConnection(dbConfig);
     
     // Для каждого блока сохраняем переводы
     for (const block of data.blocks) {

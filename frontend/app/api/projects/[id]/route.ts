@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 import { dbConfig } from '../../../../lib/database';
+import { validateUUIDParam, applyRateLimit, logSuspiciousActivity } from '../../../../lib/security-middleware';
+import { 
+  validateProjectName, 
+  validateProjectStatus, 
+  validateImageURL,
+  validateProjectTranslation 
+} from '../../../../lib/validation';
 
 // GET /api/projects/[id] - получить проект по ID
 export async function GET(
@@ -8,7 +15,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting
+    const rateLimitResult = applyRateLimit(request, 60, 60000); // 60 запросов в минуту
+    if (rateLimitResult) return rateLimitResult;
+    
     const { id } = await params;
+    
+    // Валидация UUID
+    const uuidValidation = validateUUIDParam(id, 'project ID');
+    if (uuidValidation) {
+      logSuspiciousActivity(request, 'Invalid project ID format', { id });
+      return uuidValidation;
+    }
+    
     const connection = await mysql.createConnection(dbConfig);
     
     // Получаем основную информацию о проекте
@@ -102,8 +121,54 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting (более строгий для изменяющих операций)
+    const rateLimitResult = applyRateLimit(request, 30, 60000); // 30 запросов в минуту
+    if (rateLimitResult) return rateLimitResult;
+    
     const { id } = await params;
+    
+    // Валидация UUID
+    const uuidValidation = validateUUIDParam(id, 'project ID');
+    if (uuidValidation) {
+      logSuspiciousActivity(request, 'Invalid project ID format in PUT', { id });
+      return uuidValidation;
+    }
+    
     const data = await request.json();
+    
+    // Валидация входных данных
+    if (data.sidebarName) {
+      const nameValidation = validateProjectName(data.sidebarName);
+      if (!nameValidation.valid) {
+        return NextResponse.json({ error: nameValidation.error }, { status: 400 });
+      }
+    }
+    
+    if (data.status) {
+      const statusValidation = validateProjectStatus(data.status);
+      if (!statusValidation.valid) {
+        logSuspiciousActivity(request, 'Invalid project status', { status: data.status });
+        return NextResponse.json({ error: statusValidation.error }, { status: 400 });
+      }
+    }
+    
+    if (data.image) {
+      const imageValidation = validateImageURL(data.image);
+      if (!imageValidation.valid) {
+        return NextResponse.json({ error: imageValidation.error }, { status: 400 });
+      }
+    }
+    
+    // Валидация переводов
+    if (data.translations && Array.isArray(data.translations)) {
+      for (const translation of data.translations) {
+        const translationValidation = validateProjectTranslation(translation);
+        if (!translationValidation.valid) {
+          return NextResponse.json({ error: `Translation error: ${translationValidation.error}` }, { status: 400 });
+        }
+      }
+    }
+    
     const connection = await mysql.createConnection(dbConfig);
     
     // Обновляем основную информацию проекта
@@ -165,7 +230,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting (строгий для удаления)
+    const rateLimitResult = applyRateLimit(request, 10, 60000); // 10 запросов в минуту
+    if (rateLimitResult) return rateLimitResult;
+    
     const { id } = await params;
+    
+    // Валидация UUID
+    const uuidValidation = validateUUIDParam(id, 'project ID');
+    if (uuidValidation) {
+      logSuspiciousActivity(request, 'Invalid project ID format in DELETE', { id });
+      return uuidValidation;
+    }
+    
     const connection = await mysql.createConnection(dbConfig);
     
     // Удаляем проект (каскадное удаление удалит блоки и ссылки)

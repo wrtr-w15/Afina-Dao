@@ -106,44 +106,57 @@
     "searching": "Searching..."
   },
   "about": {
-    "title": "About Afina DAO",
-    "description": "Information about Afina DAO decentralized autonomous organization",
+    "title": "Terms and Conditions of Service",
+    "description": "Complete terms and conditions of service for Afina DAO",
     "header": {
-      "title": "About Afina DAO",
-      "subtitle": "Comprehensive support for crypto projects with full control and process stability"
+      "title": "Terms and Conditions of Service",
+      "subtitle": "Please read the terms carefully before starting cooperation"
     },
-    "services": {
-      "title": "Our Services",
-      "description1": "Afina DAO provides comprehensive support for crypto projects. Our clients choose a project, and for a fixed monthly fee, it is managed on our servers until TGE.",
-      "description2": "We work with testnets, mainnets, and other crypto activities, ensuring full control and process stability."
+    "section1": {
+      "title": "1. General Provisions",
+      "point1": "1.1. The Organization provides turnkey project management services using UI scripts written on the Afina platform.",
+      "point2": "1.2. The Organization does not guarantee receiving an airdrop from projects."
     },
-    "security": {
-      "title": "Security is our priority",
-      "point1": "Only Afina DAO team members have access to wallets.",
-      "point2": "An insurance fund has been created for unforeseen situations.",
-      "point3": "After cooperation ends, all client data is completely deleted from our servers."
+    "section2": {
+      "title": "2. Rights and Obligations of the Organization",
+      "subtitle1": "2.1. The Organization undertakes to:",
+      "obligation1": "2.1.1. Continuously monitor the operation of scripts.",
+      "obligation2": "2.1.2. Update and add new scripts as new activities appear.",
+      "obligation3": "2.1.3. Ensure maximum activity in the project ecosystem within its own choice.",
+      "obligation4": "2.1.4. Provide an Afina license for the remote server free of charge.",
+      "subtitle2": "2.2. The Organization does not perform:",
+      "notPerformed1": "2.2.1. Airdrop claiming or KYC completion.",
+      "subtitle3": "2.3. The Organization has the right to:",
+      "right1": "2.3.1. Independently determine the list of activities to perform.",
+      "right2": "2.3.2. Consider additional proposals from the Client, but is not obliged to accept them."
     },
-    "responsibilities": {
-      "title": "Areas of Responsibility",
-      "client": {
-        "title": "Client's area of responsibility:",
-        "kyc": "KYC completion",
-        "wallets": "Wallet funding",
-        "claim": "Token claiming"
-      },
-      "our": {
-        "title": "Our area of responsibility:",
-        "operations": "Operational part",
-        "support": "Project support",
-        "access": "Restricted server access"
-      },
-      "note": "Server access is strictly limited and provided only to Afina DAO specialists."
+    "section3": {
+      "title": "3. Rights and Obligations of the Client",
+      "subtitle1": "3.1. The Client undertakes to:",
+      "obligation1": "3.1.1. Pay for the Organization's services in full at the beginning of the month.",
+      "obligation2": "3.1.2. Bear the costs of proxies, remote server, social accounts (Discord, Twitter, etc.) and wallet funding.",
+      "subtitle2": "3.2. The Client has the right to:",
+      "right1": "3.2.1. Submit project proposals for consideration by the Organization."
+    },
+    "section4": {
+      "title": "4. Liability of the Parties",
+      "subtitle1": "4.1. The Organization is not responsible for:",
+      "notResponsible1": "4.1.1. Suspension or termination of project activities.",
+      "notResponsible2": "4.1.2. Non-payment of airdrop by the project.",
+      "notResponsible3": "4.1.3. Actions requiring KYC completion or airdrop claiming.",
+      "point2": "4.2. The Client accepts the risk of project termination in case of its suspension.",
+      "point3": "4.3. Funds paid by the Client for services are non-refundable."
+    },
+    "section5": {
+      "title": "5. Payment for Services",
+      "point1": "5.1. The cost of services is calculated based on the number of accounts and projects.",
+      "point2": "5.2. The price can be determined on the Organization's website, clarified in the Afina DAO chat, or with representatives @acycas / @kirjeyy.",
+      "point3": "5.3. Payment is made monthly, at the beginning of the month, and is non-refundable."
     },
     "contact": {
-      "title": "Join Us",
-      "subtitle": "Become part of the revolution in automation and decentralized technologies",
-      "joinButton": "Join DAO",
-      "learnMoreButton": "Learn More"
+      "title": "Contacts",
+      "subtitle": "For cooperation inquiries, please contact our representatives on Telegram",
+      "representatives": "Telegram representatives: @acycas / @kirjeyy"
     }
   },
   "pricingPage": {
