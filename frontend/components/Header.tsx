@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Menu, X, Sun, Moon, BookOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Menu, X, Sun, Moon } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -11,6 +11,7 @@ import { getProjects } from '@/lib/projects';
 import { Project } from '@/types/project';
 import { searchProjects, SearchResult } from '@/lib/search';
 import LanguageSelector from './LanguageSelector';
+import MenuContent from './MenuContent';
 
 interface HeaderProps {
   onSearch?: (query: string) => void;
@@ -34,10 +35,6 @@ export default function Header({
   const [lastSearchQuery, setLastSearchQuery] = useState('');
   const [mobileProjects, setMobileProjects] = useState<Project[]>([]);
   const [isMobileLoading, setIsMobileLoading] = useState(false);
-  const [isAboutCollapsed, setIsAboutCollapsed] = useState(false);
-  const [isProductsCollapsed, setIsProductsCollapsed] = useState(false);
-  const [isAboutHovered, setIsAboutHovered] = useState(false);
-  const [isProductsHovered, setIsProductsHovered] = useState(false);
   
   const { isDarkMode, toggleTheme } = useTheme();
   const t = useTranslations('search');
@@ -430,106 +427,11 @@ export default function Header({
 
             {/* Mobile Sidebar Content */}
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="w-full">
-                {/* About Afina DAO Section */}
-                <div className="mb-6">
-                  <div className="text-left">
-                    <button
-                      onClick={() => setIsAboutCollapsed(!isAboutCollapsed)}
-                      onMouseEnter={() => setIsAboutHovered(true)}
-                      onMouseLeave={() => setIsAboutHovered(false)}
-                      className="flex items-center justify-between w-full text-sm font-medium text-gray-600 dark:text-gray-400 mb-2 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-                    >
-                      <span>Информация</span>
-                      <div className={`transition-all duration-200 ease-in-out ${
-                        isAboutHovered ? 'opacity-100' : 'opacity-0'
-                      }`}>
-                        {isAboutCollapsed ? (
-                          <ChevronRight className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </div>
-                    </button>
-                    <div 
-                      className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                        isAboutCollapsed ? 'max-h-0' : 'max-h-96'
-                      }`}
-                    >
-                      <button
-                        onClick={() => {
-                          router.push('/about');
-                          handleMobileMenuClose();
-                        }}
-                        className={`flex items-center space-x-3 w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                          isActive('/about') 
-                            ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' 
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <BookOpen className="h-4 w-4" />
-                        <span>Про Afina DAO</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Products Section */}
-                <div className="mb-6">
-                  <div className="text-left">
-                    <button
-                      onClick={() => setIsProductsCollapsed(!isProductsCollapsed)}
-                      onMouseEnter={() => setIsProductsHovered(true)}
-                      onMouseLeave={() => setIsProductsHovered(false)}
-                      className="flex items-center justify-between w-full text-sm font-medium text-gray-600 dark:text-gray-400 mb-2 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-                    >
-                      <span>Продукты</span>
-                      <div className={`transition-all duration-200 ease-in-out ${
-                        isProductsHovered ? 'opacity-100' : 'opacity-0'
-                      }`}>
-                        {isProductsCollapsed ? (
-                          <ChevronRight className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </div>
-                    </button>
-                    <div 
-                      className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                        isProductsCollapsed ? 'max-h-0' : 'max-h-96'
-                      }`}
-                    >
-                      {isMobileLoading ? (
-                        <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                          Загрузка...
-                        </div>
-                      ) : mobileProjects.length > 0 ? (
-                        mobileProjects.map((project) => (
-                          <button
-                            key={project.id}
-                            onClick={() => {
-                              router.push(`/project/${project.id}`);
-                              handleMobileMenuClose();
-                            }}
-                            className={`flex items-center space-x-3 w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                              isActive(`/project/${project.id}`) 
-                                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' 
-                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                            }`}
-                          >
-                            <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                            <span className="truncate">{project.sidebarName || project.name}</span>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                          Продукты будут добавлены позже
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <MenuContent 
+                projects={mobileProjects} 
+                isLoading={isMobileLoading} 
+                onItemClick={handleMobileMenuClose}
+              />
             </div>
 
             {/* Mobile Footer */}

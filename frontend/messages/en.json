@@ -1,4 +1,56 @@
 {
+  "home": {
+    "hero": {
+      "title": "Afina DAO",
+      "description": "Afina DAO is a professional platform for crypto wallet management and automation: we host and support your wallets on our secure servers, run scripted activities in testnets and real projects to earn rewards, and provide 24/7 account monitoring.",
+      "learnMore": "Learn More",
+      "viewPricing": "View Pricing"
+    },
+    "features": {
+      "title": "Our Capabilities",
+      "management": {
+        "title": "Management and Hosting",
+        "description": "We host and support your wallets on our secure servers, run scripted activities in testnets and real projects to earn rewards."
+      },
+      "security": {
+        "title": "Data Security",
+        "description": "Only trusted team members have access to funds and critical data; upon completion of cooperation, all client information is completely deleted from our servers."
+      },
+      "monitoring": {
+        "title": "24/7 Monitoring",
+        "description": "We provide round-the-clock monitoring of account status, tracking all processes and responding promptly to any changes."
+      },
+      "automation": {
+        "title": "Process Automation",
+        "description": "For process automation, we use Afina — an antidetect browser with which we have an official partnership, increasing reliability and task execution speed."
+      }
+    },
+    "partnership": {
+      "title": "Official Partnership with Afina",
+      "description": "For process automation, we use Afina — an antidetect browser with which we have an official partnership, increasing reliability and task execution speed."
+    },
+    "security": {
+      "title": "Security and Privacy",
+      "description": "Only trusted team members have access to funds and critical data; upon completion of cooperation, all client information is completely deleted from our servers."
+    },
+    "businessModel": {
+      "title": "Service Model",
+      "description": "Service on a monthly subscription model — rates depend on the number of accounts and project sets; individual terms, technical support, and reporting are available for corporate clients. Details and legal terms are on the 'About Afina DAO' page or in our commercial proposal upon request.",
+      "viewPricing": "View Pricing",
+      "contactUs": "Contact Us"
+    },
+    "quickLinks": {
+      "title": "Quick Links",
+      "about": {
+        "title": "About Afina DAO",
+        "description": "Detailed platform information and legal terms"
+      },
+      "pricing": {
+        "title": "Pricing",
+        "description": "Service cost calculation"
+      }
+    }
+  },
   "common": {
     "welcome": "Welcome to Afina DAO Wiki",
     "welcomeDescription": "Your comprehensive knowledge base for everything related to Afina DAO",
@@ -42,7 +94,8 @@
     "aboutAfinaDAO": "About Afina DAO",
     "pricing": "Pricing",
     "poweredBy": "Powered By",
-    "afina": "Afina"
+    "afina": "Afina",
+    "noProjects": "No projects yet"
   },
   "language": {
     "selectLanguage": "Select language"

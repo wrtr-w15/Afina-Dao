@@ -8,8 +8,13 @@ import { getMessages, getLocale } from 'next-intl/server';
 const montserrat = Montserrat({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Afina DAO Wiki',
-  description: 'Comprehensive knowledge base for Afina DAO',
+  title: 'Afina DAO',
+  description: 'Professional crypto wallet management and automation platform',
+  icons: {
+    icon: '/images/purple afinka.png',
+    shortcut: '/images/purple afinka.png',
+    apple: '/images/purple afinka.png',
+  },
 };
 
 export default async function RootLayout({
