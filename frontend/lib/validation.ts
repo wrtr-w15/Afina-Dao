@@ -13,11 +13,13 @@ export function isValidUUID(uuid: string): boolean {
 
 /**
  * Проверяет, является ли строка валидным URL
+ * Только безопасные протоколы: http, https
  */
 export function isValidURL(url: string): boolean {
   try {
-    new URL(url);
-    return true;
+    const parsed = new URL(url);
+    const allowedProtocols = ['http:', 'https:'];
+    return allowedProtocols.includes(parsed.protocol);
   } catch {
     return false;
   }
@@ -111,6 +113,7 @@ export function validateDescription(description: string): { valid: boolean; erro
 
 /**
  * Валидирует URL изображения
+ * Проверяет безопасность протокола
  */
 export function validateImageURL(url: string): { valid: boolean; error?: string; sanitized?: string } {
   if (!url || typeof url !== 'string') {
@@ -126,6 +129,13 @@ export function validateImageURL(url: string): { valid: boolean; error?: string;
   // Проверяем, что это похоже на URL
   if (!sanitized.startsWith('http://') && !sanitized.startsWith('https://') && !sanitized.startsWith('/')) {
     return { valid: false, error: 'Image URL must start with http://, https://, or /' };
+  }
+  
+  // Дополнительная проверка для полных URL
+  if (sanitized.startsWith('http://') || sanitized.startsWith('https://')) {
+    if (!isValidURL(sanitized)) {
+      return { valid: false, error: 'Invalid or unsafe URL protocol' };
+    }
   }
   
   return { valid: true, sanitized };

@@ -16,6 +16,7 @@
     "date-fns": "^2.30.0",
     "dotenv": "^17.2.3",
     "framer-motion": "^10.16.16",
+    "isomorphic-dompurify": "^2.28.0",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.294.0",
     "mysql2": "^3.15.1",
