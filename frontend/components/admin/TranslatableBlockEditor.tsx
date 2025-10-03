@@ -57,7 +57,7 @@ export default function TranslatableBlockEditor({ blocks, currentLang, onChange 
 
     const newBlocks = [...blocks, newBlock];
     onChange(newBlocks);
-    setExpandedBlocks(new Set([...expandedBlocks, blocks.length]));
+    setExpandedBlocks(new Set(Array.from(expandedBlocks).concat([blocks.length])));
   };
 
   const removeBlock = (index: number) => {

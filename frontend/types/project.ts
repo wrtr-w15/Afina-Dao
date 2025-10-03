@@ -80,6 +80,7 @@ export interface CreateProjectData {
   telegramPost?: string;
   image?: string;
   blocks: ProjectBlock[];
+  translations?: ProjectTranslation[];
 }
 
 export interface UpdateProjectData extends Partial<CreateProjectData> {

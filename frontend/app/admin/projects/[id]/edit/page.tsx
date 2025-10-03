@@ -63,6 +63,12 @@ export default function EditProjectPage() {
         getCategories()
       ]);
       
+      if (!project) {
+        setError('Project not found');
+        setIsLoading(false);
+        return;
+      }
+      
       setCategories(categoriesData);
       
       // Инициализируем переводы проекта для всех языков
@@ -138,12 +144,14 @@ export default function EditProjectPage() {
       console.log('Project info saved, now saving block translations...');
       
       // Преобразуем блоки для API переводов
-      const blocksForTranslationAPI = formData.blocks.map(block => ({
-        id: block.id,
-        gifUrl: block.gifUrl,
-        links: block.links,
-        translations: Object.values(block.translations).filter(t => t.locale) // Фильтруем пустые переводы
-      }));
+      const blocksForTranslationAPI = formData.blocks
+        .filter(block => block.id) // Фильтруем блоки без ID
+        .map(block => ({
+          id: block.id!,
+          gifUrl: block.gifUrl,
+          links: block.links,
+          translations: Object.values(block.translations).filter(t => t.locale) // Фильтруем пустые переводы
+        }));
       
       console.log('Block translations to save:', blocksForTranslationAPI);
       
