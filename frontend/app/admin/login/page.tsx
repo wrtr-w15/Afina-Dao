@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -18,11 +18,30 @@ import {
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/admin';
+  
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
+  
+  // Проверяем, авторизован ли пользователь уже
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/auth/check');
+        if (response.ok) {
+          // Уже авторизован, редиректим
+          router.push(redirectTo);
+        }
+      } catch (error) {
+        // Не авторизован, остаемся на странице логина
+      }
+    };
+    checkAuth();
+  }, [router, redirectTo]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +97,7 @@ export default function AdminLoginPage() {
         if (data.success === true) {
           setMessage({ type: 'success', text: 'Access approved! Redirecting...' });
           setTimeout(() => {
-            router.push('/admin');
+            router.push(redirectTo);
           }, 1000);
           return;
         } else if (data.success === false) {
