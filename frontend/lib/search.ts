@@ -33,9 +33,9 @@ export async function searchProjects(query: string): Promise<SearchResult[]> {
         : (project.category as any)?.name?.toLowerCase().includes(searchQuery);
 
       if (matchesName || matchesDescription || matchesCategory) {
-        results.push({
+        const result = {
           id: project.id,
-          type: 'project',
+          type: 'project' as const,
           title: project.sidebarName || project.name,
           description: project.description,
           category: typeof project.category === 'string' 
@@ -43,7 +43,9 @@ export async function searchProjects(query: string): Promise<SearchResult[]> {
             : (project.category as any)?.name,
           image: project.image,
           url: `/project/${project.id}`
-        });
+        };
+        console.log('Adding search result:', result);
+        results.push(result);
       }
     });
 

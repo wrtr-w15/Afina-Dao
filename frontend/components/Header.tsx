@@ -127,10 +127,20 @@ export default function Header({
   };
 
   const handleSearchResultClick = (result: SearchResult) => {
+    console.log('🔍 Search result clicked:', {
+      title: result.title,
+      url: result.url,
+      type: result.type
+    });
+    
     router.push(result.url);
+    
+    // Очищаем поиск
     setSearchQuery('');
     setSearchResults([]);
     setIsSearchFocused(false);
+    
+    console.log('✓ Navigating to:', result.url);
   };
 
   // Загрузка проектов для мобильного меню
@@ -237,7 +247,10 @@ export default function Header({
                         {searchResults.map((result) => (
                           <button
                             key={`${result.type}-${result.id}`}
-                            onClick={() => handleSearchResultClick(result)}
+                            onMouseDown={(e) => {
+                              e.preventDefault(); // Предотвращаем blur
+                              handleSearchResultClick(result);
+                            }}
                             className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                           >
                             <div className="flex items-center space-x-3">

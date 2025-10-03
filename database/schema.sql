@@ -18,6 +18,19 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- Таблица переводов проектов
+CREATE TABLE IF NOT EXISTS project_translations (
+    id VARCHAR(36) PRIMARY KEY,
+    project_id VARCHAR(36) NOT NULL,
+    locale VARCHAR(10) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_project_locale (project_id, locale),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 -- Таблица блоков проектов
 CREATE TABLE IF NOT EXISTS project_blocks (
     id VARCHAR(36) PRIMARY KEY,
@@ -29,6 +42,20 @@ CREATE TABLE IF NOT EXISTS project_blocks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- Таблица переводов блоков
+CREATE TABLE IF NOT EXISTS project_block_translations (
+    id VARCHAR(36) PRIMARY KEY,
+    block_id VARCHAR(36) NOT NULL,
+    locale VARCHAR(10) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    gif_caption TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_block_locale (block_id, locale),
+    FOREIGN KEY (block_id) REFERENCES project_blocks(id) ON DELETE CASCADE
 );
 
 -- Таблица ссылок блоков

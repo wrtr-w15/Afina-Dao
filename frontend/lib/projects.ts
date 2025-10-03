@@ -127,6 +127,12 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
     
     const result = await handleApiResponse(response);
     
+    // Очищаем кэш сайдбара
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sidebar_projects');
+      window.dispatchEvent(new Event('sidebarCacheInvalidated'));
+    }
+    
     // Возвращаем созданный проект
     return await getProjectById(result.id) || data as any;
   } catch (error) {
@@ -136,37 +142,21 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
 };
 
 // Обновить проект
-export const updateProject = async (data: UpdateProjectData): Promise<Project | null> => {
+export const updateProject = async (id: string, data: any): Promise<Project | null> => {
   try {
     // Создаем чистый объект без циклических ссылок
+    // Блоки НЕ включаем, так как они сохраняются через отдельное API
     const cleanData = {
-      name: data.name,
       sidebarName: data.sidebarName,
-      description: data.description,
       status: data.status,
       category: data.category,
-      startDate: data.startDate,
-      deadline: data.deadline,
-      budget: data.budget,
       website: data.website,
       telegramPost: data.telegramPost,
       image: data.image,
-      blocks: data.blocks?.map(block => ({
-        id: block.id,
-        title: block.title,
-        content: block.content,
-        gifUrl: block.gifUrl,
-        gifCaption: block.gifCaption,
-        links: block.links?.map(link => ({
-          id: link.id,
-          title: link.title,
-          url: link.url,
-          type: link.type
-        })) || []
-      })) || []
+      translations: data.translations
     };
 
-    const response = await fetch(`${API_BASE_URL}/api/projects/${data.id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/projects/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -174,10 +164,16 @@ export const updateProject = async (data: UpdateProjectData): Promise<Project | 
       body: JSON.stringify(cleanData),
     });
     
-    await handleApiResponse(response);
+    const result = await handleApiResponse(response);
+    
+    // Очищаем кэш сайдбара
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sidebar_projects');
+      window.dispatchEvent(new Event('sidebarCacheInvalidated'));
+    }
     
     // Возвращаем обновленный проект
-    return await getProjectById(data.id);
+    return await getProjectById(id);
   } catch (error) {
     console.error('Error updating project:', error);
     return null;
@@ -192,6 +188,13 @@ export const deleteProject = async (id: string): Promise<boolean> => {
     });
     
     await handleApiResponse(response);
+    
+    // Очищаем кэш сайдбара
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sidebar_projects');
+      window.dispatchEvent(new Event('sidebarCacheInvalidated'));
+    }
+    
     return true;
   } catch (error) {
     console.error('Error deleting project:', error);

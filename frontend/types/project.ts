@@ -1,5 +1,18 @@
 // Типы для работы с проектами
 
+export interface ProjectTranslation {
+  locale: string;
+  name: string;
+  description: string;
+}
+
+export interface BlockTranslation {
+  locale: string;
+  title: string;
+  content: string;
+  gifCaption?: string;
+}
+
 export interface ProjectBlock {
   id: string;
   title: string;
@@ -7,6 +20,7 @@ export interface ProjectBlock {
   gifUrl?: string;
   gifCaption?: string; // Подпись под GIF
   links?: ProjectLink[];
+  translations?: BlockTranslation[];
 }
 
 export interface ProjectLink {
@@ -30,6 +44,7 @@ export interface Project {
   telegramPost?: string;
   image?: string;
   blocks: ProjectBlock[];
+  translations?: ProjectTranslation[];
   createdAt: string;
   updatedAt: string;
 }

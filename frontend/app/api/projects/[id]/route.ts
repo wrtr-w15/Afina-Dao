@@ -11,67 +11,83 @@ export async function GET(
     const { id } = await params;
     const connection = await mysql.createConnection(dbConfig);
     
+    // Получаем основную информацию о проекте
     const [projects] = await connection.execute(`
-      SELECT p.*, 
-             JSON_ARRAYAGG(
-               JSON_OBJECT(
-                 'id', pb.id,
-                 'title', pb.title,
-                 'content', pb.content,
-                 'gifUrl', pb.gif_url,
-                 'gifCaption', pb.gif_caption,
-                 'links', COALESCE(links_data.links, JSON_ARRAY())
-               )
-             ) as blocks
-      FROM projects p
-      LEFT JOIN project_blocks pb ON p.id = pb.project_id
-      LEFT JOIN (
-        SELECT pbl.block_id,
-               JSON_ARRAYAGG(
-                 JSON_OBJECT(
-                   'id', pbl.id,
-                   'title', pbl.title,
-                   'url', pbl.url,
-                   'type', pbl.type
-                 )
-               ) as links
-        FROM project_block_links pbl
-        GROUP BY pbl.block_id
-      ) links_data ON pb.id = links_data.block_id
-      WHERE p.id = ?
-      GROUP BY p.id
+      SELECT p.* FROM projects p WHERE p.id = ?
     `, [id]);
+    
+    if ((projects as any[]).length === 0) {
+      await connection.end();
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+    
+    const project = (projects as any[])[0];
+    
+    // Получаем переводы
+    const [translations] = await connection.execute(`
+      SELECT * FROM project_translations WHERE project_id = ?
+    `, [id]);
+    
+    // Получаем блоки
+    const [blocks] = await connection.execute(`
+      SELECT * FROM project_blocks WHERE project_id = ? ORDER BY created_at ASC
+    `, [id]);
+    
+    // Для каждого блока получаем переводы и ссылки
+    const blocksWithTranslations = await Promise.all((blocks as any[]).map(async (block: any) => {
+      // Получаем переводы блока
+      const [blockTranslations] = await connection.execute(`
+        SELECT * FROM project_block_translations WHERE block_id = ?
+      `, [block.id]);
+      
+      // Получаем ссылки
+      const [links] = await connection.execute(`
+        SELECT * FROM project_block_links WHERE block_id = ?
+      `, [block.id]);
+      
+      return {
+        id: block.id,
+        title: block.title,
+        content: block.content,
+        gifUrl: block.gif_url,
+        gifCaption: block.gif_caption,
+        translations: (blockTranslations as any[]).map(t => ({
+          locale: t.locale,
+          title: t.title,
+          content: t.content,
+          gifCaption: t.gif_caption
+        })),
+        links: (links as any[]).map(link => ({
+          id: link.id,
+          title: link.title,
+          url: link.url,
+          type: link.type
+        }))
+      };
+    }));
 
     await connection.end();
 
-    if ((projects as any[]).length === 0) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-    }
-
-    const project = (projects as any[])[0];
-
-        // Преобразуем данные из базы в формат фронтенда
-        const formattedProject = {
-          id: project.id,
-          name: project.name,
-          sidebarName: project.sidebar_name,
-          description: project.description,
-          status: project.status,
-          category: project.category,
-          website: project.website,
-          telegramPost: project.telegram_post,
-          image: project.image,
-          blocks: project.blocks ? project.blocks.filter((block: any) => block.id).map((block: any) => ({
-            id: block.id,
-            title: block.title,
-            content: block.content,
-            gifUrl: block.gifUrl,
-            gifCaption: block.gifCaption,
-            links: block.links || []
-          })) : [],
-          createdAt: project.created_at,
-          updatedAt: project.updated_at
-        };
+    // Преобразуем данные из базы в формат фронтенда
+    const formattedProject = {
+      id: project.id,
+      name: project.name,
+      sidebarName: project.sidebar_name,
+      description: project.description,
+      status: project.status,
+      category: project.category,
+      website: project.website,
+      telegramPost: project.telegram_post,
+      image: project.image,
+      translations: (translations as any[]).map(t => ({
+        locale: t.locale,
+        name: t.name,
+        description: t.description
+      })),
+      blocks: blocksWithTranslations,
+      createdAt: project.created_at,
+      updatedAt: project.updated_at
+    };
 
     return NextResponse.json(formattedProject);
   } catch (error) {
@@ -90,17 +106,15 @@ export async function PUT(
     const data = await request.json();
     const connection = await mysql.createConnection(dbConfig);
     
-    // Обновляем проект
+    // Обновляем основную информацию проекта
     await connection.execute(`
       UPDATE projects 
-      SET name = ?, sidebar_name = ?, description = ?, status = ?, category = ?, 
+      SET sidebar_name = ?, status = ?, category = ?, 
           website = ?, telegram_post = ?, image = ?, 
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
-      data.name,
       data.sidebarName,
-      data.description,
       data.status,
       data.category,
       data.website || null,
@@ -108,47 +122,37 @@ export async function PUT(
       data.image || null,
       id
     ]);
-
-    // Удаляем старые блоки и создаем новые
-    await connection.execute(`DELETE FROM project_blocks WHERE project_id = ?`, [id]);
-
-    // Создаем новые блоки
-    for (const block of data.blocks || []) {
-      const blockId = crypto.randomUUID();
-      
-      await connection.execute(`
-        INSERT INTO project_blocks (id, project_id, title, content, gif_url)
-        VALUES (?, ?, ?, ?, ?)
-      `, [
-        blockId,
-        id,
-        block.title,
-        block.content,
-        block.gifUrl || null
-      ]);
-
-      // Создаем ссылки блока
-      if (block.links && block.links.length > 0) {
-        for (const link of block.links) {
-          const linkId = crypto.randomUUID();
-          
-          await connection.execute(`
-            INSERT INTO project_block_links (id, block_id, title, url, type)
-            VALUES (?, ?, ?, ?, ?)
-          `, [
-            linkId,
-            blockId,
-            link.title,
-            link.url,
-            link.type
-          ]);
-        }
+    
+    // Сохраняем переводы
+    if (data.translations && Array.isArray(data.translations)) {
+      for (const translation of data.translations) {
+        await connection.execute(`
+          INSERT INTO project_translations (id, project_id, locale, name, description)
+          VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE 
+            name = VALUES(name),
+            description = VALUES(description),
+            updated_at = CURRENT_TIMESTAMP
+        `, [
+          crypto.randomUUID(),
+          id,
+          translation.locale,
+          translation.name,
+          translation.description
+        ]);
       }
     }
 
+    // Блоки теперь обновляются через отдельное API /api/projects/[id]/blocks/translations
+    // Здесь обновляем только основную информацию проекта
+
     await connection.end();
 
-    return NextResponse.json({ message: 'Project updated successfully' });
+    // Сигнализируем об обновлении данных (для очистки кэша на клиенте)
+    return NextResponse.json({ 
+      message: 'Project updated successfully',
+      cacheInvalidated: true 
+    });
   } catch (error) {
     console.error('Error updating project:', error);
     return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });

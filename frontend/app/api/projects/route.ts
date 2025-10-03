@@ -8,31 +8,42 @@ export async function GET() {
   try {
     const connection = await mysql.createConnection(dbConfig);
     
-    // Простой запрос для начала
+    // Получаем все проекты
     const [projects] = await connection.execute(`
       SELECT * FROM projects ORDER BY created_at DESC
     `);
 
+    // Для каждого проекта получаем переводы
+    const projectsWithTranslations = await Promise.all((projects as any[]).map(async (project: any) => {
+      const [translations] = await connection.execute(`
+        SELECT * FROM project_translations WHERE project_id = ?
+      `, [project.id]);
+
+      return {
+        id: project.id,
+        name: project.name,
+        sidebarName: project.sidebar_name,
+        description: project.description,
+        status: project.status,
+        category: project.category,
+        budget: project.budget,
+        website: project.website,
+        telegramPost: project.telegram_post,
+        image: project.image,
+        translations: (translations as any[]).map(t => ({
+          locale: t.locale,
+          name: t.name,
+          description: t.description
+        })),
+        blocks: [], // Пока без блоков
+        createdAt: project.created_at,
+        updatedAt: project.updated_at
+      };
+    }));
+
     await connection.end();
 
-        // Преобразуем данные из базы в формат фронтенда
-        const formattedProjects = (projects as any[]).map(project => ({
-          id: project.id,
-          name: project.name,
-          sidebarName: project.sidebar_name,
-          description: project.description,
-          status: project.status,
-          category: project.category,
-          budget: project.budget,
-          website: project.website,
-          telegramPost: project.telegram_post,
-          image: project.image,
-          blocks: [], // Пока без блоков
-          createdAt: project.created_at,
-          updatedAt: project.updated_at
-        }));
-
-    return NextResponse.json(formattedProjects);
+    return NextResponse.json(projectsWithTranslations);
   } catch (error) {
     console.error('Error fetching projects:', error);
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });
@@ -78,22 +89,57 @@ export async function POST(request: NextRequest) {
       data.image || null
     ]);
 
+    // Сохраняем переводы проекта (если есть)
+    if (data.translations && Array.isArray(data.translations)) {
+      for (const translation of data.translations) {
+        await connection.execute(`
+          INSERT INTO project_translations (id, project_id, locale, name, description)
+          VALUES (?, ?, ?, ?, ?)
+        `, [
+          crypto.randomUUID(),
+          projectId,
+          translation.locale,
+          translation.name,
+          translation.description
+        ]);
+      }
+    }
+
     // Создаем блоки проекта
     if (data.blocks && Array.isArray(data.blocks)) {
       for (const block of data.blocks) {
       const blockId = crypto.randomUUID();
       
+      // Вставляем базовый блок (используем первый перевод или прямые значения)
+      const firstTranslation = block.translations?.[0];
       await connection.execute(`
         INSERT INTO project_blocks (id, project_id, title, content, gif_url, gif_caption)
         VALUES (?, ?, ?, ?, ?, ?)
       `, [
         blockId,
         projectId,
-        block.title,
-        block.content,
+        firstTranslation?.title || block.title || '',
+        firstTranslation?.content || block.content || '',
         block.gifUrl || null,
-        block.gifCaption || null
+        firstTranslation?.gifCaption || block.gifCaption || null
       ]);
+
+      // Сохраняем переводы блока
+      if (block.translations && Array.isArray(block.translations)) {
+        for (const translation of block.translations) {
+          await connection.execute(`
+            INSERT INTO project_block_translations (id, block_id, locale, title, content, gif_caption)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `, [
+            crypto.randomUUID(),
+            blockId,
+            translation.locale,
+            translation.title,
+            translation.content,
+            translation.gifCaption || null
+          ]);
+        }
+      }
 
       // Создаем ссылки блока
       if (block.links && block.links.length > 0) {
@@ -117,7 +163,12 @@ export async function POST(request: NextRequest) {
 
     await connection.end();
 
-    return NextResponse.json({ id: projectId, message: 'Project created successfully' });
+    // Сигнализируем об обновлении данных (для очистки кэша на клиенте)
+    return NextResponse.json({ 
+      id: projectId, 
+      message: 'Project created successfully',
+      cacheInvalidated: true 
+    });
   } catch (error) {
     console.error('Error creating project:', error);
     console.error('Error details:', {

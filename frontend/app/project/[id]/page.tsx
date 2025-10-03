@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import Layout from '@/components/LayoutComponent';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -18,11 +19,92 @@ import { getProjectById } from '@/lib/projects';
 export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
+  const locale = useLocale();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeBlock, setActiveBlock] = useState<number>(0);
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+
+  // Отслеживание изменения activeBlock для отладки
+  useEffect(() => {
+    console.log(`📍 Active block changed to: ${activeBlock}`);
+  }, [activeBlock]);
+
+  // Функция для получения переведенного контента проекта
+  const getTranslatedProjectContent = () => {
+    if (!project) return { name: '', description: '' };
+    
+    // Если нет переводов вообще, используем базовые значения
+    if (!project.translations || project.translations.length === 0) {
+      return {
+        name: project.name || '',
+        description: project.description || ''
+      };
+    }
+    
+    // Ищем перевод для текущего языка
+    const translation = project.translations.find((t: any) => t.locale === locale);
+    
+    // Если перевод найден, используем его (с fallback на базовые значения)
+    if (translation) {
+      return {
+        name: translation.name || project.name || '',
+        description: translation.description || project.description || ''
+      };
+    }
+    
+    // Если перевода нет, используем базовые значения
+    return {
+      name: project.name || '',
+      description: project.description || ''
+    };
+  };
+
+  // Функция для получения переведенного контента блока
+  const getTranslatedBlockContent = (block: any) => {
+    console.log(`Getting translation for block ${block.id}, locale: ${locale}`, {
+      hasTranslations: !!block.translations,
+      translationsCount: block.translations?.length || 0,
+      availableLocales: block.translations?.map((t: any) => t.locale) || [],
+      currentLocale: locale
+    });
+    
+    // Если нет переводов вообще, используем базовые значения
+    if (!block.translations || block.translations.length === 0) {
+      console.log(`→ Using base values for block ${block.id}`);
+      return {
+        title: block.title || '',
+        content: block.content || '',
+        gifCaption: block.gifCaption || ''
+      };
+    }
+    
+    // Ищем перевод для текущего языка
+    const translation = block.translations.find((t: any) => t.locale === locale);
+    
+    // Если перевод найден, используем его
+    if (translation) {
+      console.log(`→ Found translation for block ${block.id}, locale ${locale}:`, {
+        title: translation.title,
+        contentLength: translation.content?.length || 0
+      });
+      return {
+        title: translation.title || block.title || '',
+        content: translation.content || block.content || '',
+        gifCaption: translation.gifCaption || block.gifCaption || ''
+      };
+    }
+    
+    // Если перевода нет, используем базовые значения
+    console.log(`→ No translation found for block ${block.id}, locale ${locale}, using base values`);
+    return {
+      title: block.title || '',
+      content: block.content || '',
+      gifCaption: block.gifCaption || ''
+    };
+  };
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -41,6 +123,20 @@ export default function ProjectPage() {
       try {
         const projectId = params.id as string;
         const foundProject = await getProjectById(projectId);
+        
+        console.log('Project loaded:', {
+          id: foundProject?.id,
+          name: foundProject?.name,
+          translationsCount: foundProject?.translations?.length || 0,
+          translations: foundProject?.translations,
+          blocksCount: foundProject?.blocks?.length || 0,
+          blocks: foundProject?.blocks?.map((b: any) => ({
+            id: b.id,
+            title: b.title,
+            translationsCount: b.translations?.length || 0
+          }))
+        });
+        
         setProject(foundProject);
       } catch (error) {
         console.error('Error loading project:', error);
@@ -54,27 +150,54 @@ export default function ProjectPage() {
 
   // Отслеживание активного блока при прокрутке
   useEffect(() => {
-    if (!project?.blocks) return;
+    if (!project?.blocks || project.blocks.length === 0) return;
 
     const handleScroll = () => {
-      const blocks = project.blocks.map((_, index) => 
-        document.getElementById(`block-${index}`)
-      ).filter(Boolean);
+      // Игнорируем события скролла во время программной прокрутки
+      if (isScrolling) {
+        console.log('Skipping scroll handler - programmatic scroll in progress');
+        return;
+      }
 
-      const scrollPosition = window.scrollY + 100;
+      const blocks = project.blocks
+        .map((_, index) => document.getElementById(`block-${index}`))
+        .filter((el): el is HTMLElement => el !== null);
 
+      if (blocks.length === 0) {
+        console.log('No blocks found in DOM');
+        return;
+      }
+
+      const scrollPosition = window.scrollY + 200;
+
+      console.log('Scroll check:', {
+        scrollY: window.scrollY,
+        scrollPosition,
+        blocksCount: blocks.length,
+        blockPositions: blocks.map((b, i) => ({ index: i, offsetTop: b.offsetTop }))
+      });
+
+      // Проходим блоки от последнего к первому
       for (let i = blocks.length - 1; i >= 0; i--) {
         const block = blocks[i];
         if (block && block.offsetTop <= scrollPosition) {
+          console.log(`→ Setting active block: ${i}`);
           setActiveBlock(i);
-          break;
+          return;
         }
       }
+      
+      // Если ни один блок не прошёл проверку, ставим первый активным
+      console.log('→ Setting active block: 0 (default)');
+      setActiveBlock(0);
     };
 
-    window.addEventListener('scroll', handleScroll);
+    // Вызываем сразу при монтировании
+    handleScroll();
+    
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [project]);
+  }, [project, locale, isScrolling]); // Добавили isScrolling в зависимости
 
   if (loading) {
     return (
@@ -119,13 +242,35 @@ export default function ProjectPage() {
 
   // Функция для плавной прокрутки к блоку
   const scrollToBlock = (index: number) => {
+    console.log(`🎯 Manual scroll to block ${index}`);
+    console.log(`   Current activeBlock: ${activeBlock}`);
+    
+    // Устанавливаем флаг программной прокрутки
+    setIsScrolling(true);
+    console.log(`   isScrolling set to: true`);
+    
+    // Сразу устанавливаем активный блок
+    setActiveBlock(index);
+    console.log(`   activeBlock set to: ${index}`);
+    
     const element = document.getElementById(`block-${index}`);
     if (element) {
+      console.log(`   ✓ Element found: block-${index}`);
       element.scrollIntoView({ 
         behavior: 'smooth',
         block: 'start'
       });
-      setActiveBlock(index);
+      console.log(`   ✓ scrollIntoView called`);
+      
+      // Сбрасываем флаг через 1 секунду (время плавной прокрутки)
+      setTimeout(() => {
+        console.log('✓ Programmatic scroll completed, re-enabling scroll handler');
+        setIsScrolling(false);
+      }, 1000);
+    } else {
+      console.error(`   ✗ Element NOT found: block-${index}`);
+      // Если элемент не найден, сразу сбрасываем флаг
+      setIsScrolling(false);
     }
   };
 
@@ -142,10 +287,12 @@ export default function ProjectPage() {
       .replace(/\n/g, '<br>');
   };
 
+  const translatedProject = getTranslatedProjectContent();
+
   return (
     <Layout 
-      title={`${project.name} - Afina DAO Wiki`}
-      description={project.description}
+      title={`${translatedProject.name} - Afina DAO Wiki`}
+      description={translatedProject.description}
       showSidebar={true}
     >
       <div className="space-y-8">
@@ -154,7 +301,7 @@ export default function ProjectPage() {
           <div className="relative w-full h-64 md:h-80 rounded-lg overflow-hidden">
             <img 
               src={project.image} 
-              alt={`Баннер ${project.name}`}
+              alt={`Баннер ${translatedProject.name}`}
               className="w-full h-full object-cover"
             />
           </div>
@@ -163,7 +310,7 @@ export default function ProjectPage() {
         {/* Заголовок - центрированный */}
         <div className="mb-8 max-w-7xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-            {project.name}
+            {translatedProject.name}
           </h1>
           <div className="flex items-center gap-4 mb-4">
             <Badge className={PROJECT_STATUS_COLORS[project.status]}>
@@ -182,13 +329,13 @@ export default function ProjectPage() {
           <div className="flex-1 max-w-4xl pr-8">
             <div className="space-y-8">
               {/* Описание проекта */}
-              {project.description && (
+              {translatedProject.description && (
                 <div className="border-b border-gray-200 dark:border-gray-700 pb-8">
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
                     Описание
                   </h2>
                   <div className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {project.description}
+                    {translatedProject.description}
                   </div>
                 </div>
               )}
@@ -196,17 +343,19 @@ export default function ProjectPage() {
               {/* Блоки проекта */}
               {project.blocks && project.blocks.length > 0 && (
                 <div className="space-y-8">
-                {project.blocks.map((block, index) => (
+                {project.blocks.map((block, index) => {
+                  const translatedBlock = getTranslatedBlockContent(block);
+                  return (
                   <div key={block.id} id={`block-${index}`} className="space-y-4 scroll-mt-20">
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {block.title}
+                      {translatedBlock.title}
                     </h2>
                     
-                    {block.content && (
+                    {translatedBlock.content && (
                       <div 
                         className="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
                         dangerouslySetInnerHTML={{ 
-                          __html: `<p class="mb-4">${renderMarkdown(block.content)}</p>` 
+                          __html: `<p class="mb-4">${renderMarkdown(translatedBlock.content)}</p>` 
                         }}
                       />
                     )}
@@ -215,13 +364,13 @@ export default function ProjectPage() {
                       <div className="space-y-3">
                         <img 
                           src={block.gifUrl} 
-                          alt={`GIF для ${block.title}`}
+                          alt={`GIF для ${translatedBlock.title}`}
                           className="w-full max-w-4xl rounded-lg"
                         />
-                        {block.gifCaption && (
+                        {translatedBlock.gifCaption && (
                           <div className="text-center">
                             <p className="text-base text-gray-600 dark:text-gray-300 italic font-medium bg-gray-50 dark:bg-gray-800 py-2 px-4 rounded-lg">
-                              {block.gifCaption}
+                              {translatedBlock.gifCaption}
                             </p>
                           </div>
                         )}
@@ -245,7 +394,7 @@ export default function ProjectPage() {
                       </div>
                     )}
                   </div>
-                ))}
+                )})}
                 </div>
               )}
             </div>
@@ -258,7 +407,10 @@ export default function ProjectPage() {
                 {project.blocks && project.blocks.length > 0 && (
                   <div className="bg-white dark:bg-gray-800 shadow-lg p-2 rounded-lg">
                     <nav className="px-1 pb-1 space-y-0.5">
-                      {project.blocks.map((block, index) => (
+                      {project.blocks.map((block, index) => {
+                        const translatedBlock = getTranslatedBlockContent(block);
+                        const blockTitle = translatedBlock.title;
+                        return (
                         <button
                           key={block.id}
                           onClick={() => scrollToBlock(index)}
@@ -267,17 +419,17 @@ export default function ProjectPage() {
                               ? 'text-blue-600 dark:text-blue-400 font-medium'
                               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
                           }`}
-                          title={isCompact ? block.title : undefined}
+                          title={isCompact ? blockTitle : undefined}
                         >
                           {isCompact ? (
                             <span className="truncate block">
-                              {block.title.length > 20 ? block.title.substring(0, 20) + '...' : block.title}
+                              {blockTitle.length > 20 ? blockTitle.substring(0, 20) + '...' : blockTitle}
                             </span>
                           ) : (
-                            block.title
+                            blockTitle
                           )}
                         </button>
-                      ))}
+                      )})}
                     </nav>
                   </div>
                 )}
