@@ -30,8 +30,8 @@ interface PricingCalculation {
 
 export default function PricingPage() {
   const t = useTranslations('pricingPage');
-  const [accounts, setAccounts] = useState(150);
-  const [projects, setProjects] = useState(1);
+  const [accounts, setAccounts] = useState<number | string>(150);
+  const [projects, setProjects] = useState<number | string>(4);
   const [calculation, setCalculation] = useState<PricingCalculation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,17 @@ export default function PricingPage() {
   }, [accounts, projects]);
 
   const calculatePricing = async () => {
-    if (accounts < 1 || projects < 1) return;
+    // Не рассчитываем, если поля пустые или значения меньше минимума
+    if (accounts === '' || projects === '' || 
+        (typeof accounts === 'number' && accounts < 150) || 
+        (typeof projects === 'number' && projects < 4)) {
+      setCalculation(null);
+      return;
+    }
+
+    // Преобразуем в числа для расчетов
+    const accountsNum = typeof accounts === 'number' ? accounts : parseInt(accounts as string);
+    const projectsNum = typeof projects === 'number' ? projects : parseInt(projects as string);
 
     setIsLoading(true);
     setError(null);
@@ -67,8 +77,8 @@ export default function PricingPage() {
       
       // Находим скидку для количества проектов
       let discountMultiplier = 1.0;
-      if (projects <= 10) {
-        discountMultiplier = pricingSettings.discountMultipliers[projects.toString()] || 1.0;
+      if (projectsNum <= 10) {
+        discountMultiplier = pricingSettings.discountMultipliers[projectsNum.toString()] || 1.0;
       } else {
         // Для более чем 10 проектов используем скидку для 10 проектов
         discountMultiplier = pricingSettings.discountMultipliers['10'] || 1.0;
@@ -76,16 +86,16 @@ export default function PricingPage() {
 
       // Расчет ежемесячной подписки:
       // 1. Цена за один проект без скидки = количество аккаунтов × цена за аккаунт
-      const basePricePerProject = accounts * basePricePerAccount;
+      const basePricePerProject = accountsNum * basePricePerAccount;
       // 2. Цена за один проект со скидкой = базовая цена × (1 - скидка)
       const discountedPricePerProject = basePricePerProject * discountMultiplier;
       // 3. Общая ежемесячная подписка = цена за один проект со скидкой × количество проектов
-      const monthlySubscription = discountedPricePerProject * projects;
-      const installationFee = installationFeePerProject * projects;
+      const monthlySubscription = discountedPricePerProject * projectsNum;
+      const installationFee = installationFeePerProject * projectsNum;
 
       const calc: PricingCalculation = {
-        accounts,
-        projects,
+        accounts: accountsNum,
+        projects: projectsNum,
         firstMonthPrice: monthlySubscription,
         subsequentMonthPrice: monthlySubscription,
         installationFee,
@@ -147,7 +157,21 @@ export default function PricingPage() {
                       id="accounts"
                       type="number"
                       value={accounts}
-                      onChange={(e) => setAccounts(Math.max(150, parseInt(e.target.value) || 150))}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '') {
+                          setAccounts('');
+                        } else {
+                          const parsed = parseInt(value);
+                          setAccounts(isNaN(parsed) ? '' : parsed);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || parseInt(value) < 150) {
+                          setAccounts(150);
+                        }
+                      }}
                       className="pl-12"
                       min="150"
                     />
@@ -167,9 +191,23 @@ export default function PricingPage() {
                       id="projects"
                       type="number"
                       value={projects}
-                      onChange={(e) => setProjects(Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '') {
+                          setProjects('');
+                        } else {
+                          const parsed = parseInt(value);
+                          setProjects(isNaN(parsed) ? '' : parsed);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || parseInt(value) < 4) {
+                          setProjects(4);
+                        }
+                      }}
                       className="pl-12"
-                      min="1"
+                      min="4"
                     />
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -208,13 +246,13 @@ export default function PricingPage() {
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">
-                          {t('monthlySubscription')} ({projects} {projects === 1 ? t('project') : projects < 5 ? t('projects2') : t('projects')}):
+                          {t('monthlySubscription')} ({calculation.projects} {calculation.projects === 1 ? t('project') : calculation.projects < 5 ? t('projects2') : t('projects')}):
                         </span>
                         <span>{formatPrice(calculation.firstMonthPrice)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">
-                          {t('installationFee')} ({projects} {projects === 1 ? t('project') : projects < 5 ? t('projects2') : t('projects')}):
+                          {t('installationFee')} ({calculation.projects} {calculation.projects === 1 ? t('project') : calculation.projects < 5 ? t('projects2') : t('projects')}):
                         </span>
                         <span>{formatPrice(calculation.installationFee)}</span>
                       </div>
@@ -235,7 +273,7 @@ export default function PricingPage() {
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">
-                          {t('monthlySubscription')} ({projects} {projects === 1 ? t('project') : projects < 5 ? t('projects2') : t('projects')}):
+                          {t('monthlySubscription')} ({calculation.projects} {calculation.projects === 1 ? t('project') : calculation.projects < 5 ? t('projects2') : t('projects')}):
                         </span>
                         <span>{formatPrice(calculation.subsequentMonthPrice)}</span>
                       </div>
