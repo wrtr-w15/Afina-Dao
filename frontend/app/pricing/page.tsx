@@ -76,7 +76,7 @@ interface PricingCalculation {
 
 export default function PricingPage() {
   const t = useTranslations('pricingPage');
-  const [accounts, setAccounts] = useState<number | string>(150);
+  const [accounts, setAccounts] = useState<number | string>(200);
   const [projects, setProjects] = useState<number | string>(4);
   const [ownProxies, setOwnProxies] = useState(false);
   const [calculation, setCalculation] = useState<PricingCalculation | null>(null);
@@ -90,7 +90,7 @@ export default function PricingPage() {
   const calculatePricing = async () => {
     // Не рассчитываем, если поля пустые или значения меньше минимума
     if (accounts === '' || projects === '' || 
-        (typeof accounts === 'number' && accounts < 150) || 
+        (typeof accounts === 'number' && accounts < 200) || 
         (typeof projects === 'number' && projects < 4)) {
       setCalculation(null);
       return;
@@ -228,12 +228,12 @@ export default function PricingPage() {
                       }}
                       onBlur={(e) => {
                         const value = e.target.value;
-                        if (value === '' || parseInt(value) < 150) {
-                          setAccounts(150);
+                        if (value === '' || parseInt(value) < 200) {
+                          setAccounts(200);
                         }
                       }}
                       className="pl-12"
-                      min="150"
+                      min="200"
                     />
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
