@@ -92,6 +92,7 @@ if [ ! -f "frontend/.env.local" ]; then
         echo "  - ADMIN_PASSWORD"
         echo "  - ADMIN_SESSION_SECRET (min 32 characters)"
         echo "  - TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
+        echo "  - PORT (optional, default: 3000)"
         echo ""
         read -p "Press Enter after you've configured frontend/.env.local, or Ctrl+C to cancel..." -r
         echo
@@ -227,7 +228,13 @@ echo "   pm2 restart afina-dao-frontend - Restart application"
 echo "   pm2 stop afina-dao-frontend    - Stop application"
 echo "   pm2 delete afina-dao-frontend  - Delete application from PM2"
 echo ""
-print_info "Application is running on http://localhost:3000"
+# Получаем порт из .env.local
+PORT=$(grep "^PORT=" frontend/.env.local 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d ' ' || echo "3000")
+if [ -z "$PORT" ]; then
+    PORT=3000
+fi
+
+print_info "Application is running on http://localhost:${PORT}"
 echo ""
 
 # Wait a moment and verify the process is running
