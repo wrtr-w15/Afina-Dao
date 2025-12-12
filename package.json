@@ -25,12 +25,12 @@
     "test:frontend": "cd frontend && npm run test"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "wait-on": "^7.2.0"
+    "concurrently": "^9.2.1",
+    "wait-on": "^9.0.3"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
   },
   "keywords": [
     "wiki",

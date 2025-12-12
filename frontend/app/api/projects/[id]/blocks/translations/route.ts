@@ -10,6 +10,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     // Rate limiting
     const rateLimitResult = applyRateLimit(request, 20, 60000); // 20 запросов в минуту
     if (rateLimitResult) return rateLimitResult;

@@ -51,6 +51,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     const { id } = await params;
     const data: UpdateCategoryData = await request.json();
     const connection = await mysql.createConnection(dbConfig);
@@ -115,6 +120,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     const { id } = await params;
     const connection = await mysql.createConnection(dbConfig);
     

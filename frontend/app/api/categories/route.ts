@@ -38,6 +38,11 @@ export async function GET() {
 // POST /api/categories - создать новую категорию
 export async function POST(request: NextRequest) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     const data: CreateCategoryData = await request.json();
     const connection = await mysql.createConnection(dbConfig);
     

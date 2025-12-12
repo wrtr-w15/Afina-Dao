@@ -61,6 +61,11 @@ export async function GET() {
 // POST /api/admin/pricing - создать новые настройки цен
 export async function POST(request: NextRequest) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     const data: CreatePricingSettingsData = await request.json();
     
     const connection = await mysql.createConnection(dbConfig);
@@ -89,6 +94,11 @@ export async function POST(request: NextRequest) {
 // PUT /api/admin/pricing - обновить настройки цен
 export async function PUT(request: NextRequest) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     const data: UpdatePricingSettingsData = await request.json();
     
     const connection = await mysql.createConnection(dbConfig);

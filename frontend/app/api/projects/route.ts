@@ -53,20 +53,17 @@ export async function GET() {
 // POST /api/projects - создать новый проект
 export async function POST(request: NextRequest) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     const data: CreateProjectData = await request.json();
-    console.log('API: Received project data:', data);
-    console.log('API: data.blocks type:', typeof data.blocks);
-    console.log('API: data.blocks is array:', Array.isArray(data.blocks));
-    console.log('API: data.blocks value:', data.blocks);
-    console.log('API: data.status type:', typeof data.status);
-    console.log('API: data.status value:', data.status);
     
     // Очищаем и валидируем данные
     const cleanStatus = typeof data.status === 'string' && ['active', 'draft', 'inactive'].includes(data.status) 
       ? data.status 
       : 'draft';
-    
-    console.log('API: cleanStatus:', cleanStatus);
     
     const connection = await mysql.createConnection(dbConfig);
     

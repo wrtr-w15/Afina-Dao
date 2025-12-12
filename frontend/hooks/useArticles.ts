@@ -1,4 +1,4 @@
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 interface UseArticlesParams {
@@ -7,14 +7,12 @@ interface UseArticlesParams {
 }
 
 export function useArticles(params: UseArticlesParams = {}) {
-  return useQuery(
-    ['articles', params],
-    async () => {
+  return useQuery({
+    queryKey: ['articles', params],
+    queryFn: async () => {
       const response = await api.get('/articles', { params });
       return response.data;
     },
-    {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    }
-  );
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 }

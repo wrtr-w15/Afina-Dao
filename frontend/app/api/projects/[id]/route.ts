@@ -121,6 +121,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     // Rate limiting (более строгий для изменяющих операций)
     const rateLimitResult = applyRateLimit(request, 30, 60000); // 30 запросов в минуту
     if (rateLimitResult) return rateLimitResult;
@@ -230,6 +235,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth();
+    if (authResult) return authResult;
+
     // Rate limiting (строгий для удаления)
     const rateLimitResult = applyRateLimit(request, 10, 60000); // 10 запросов в минуту
     if (rateLimitResult) return rateLimitResult;

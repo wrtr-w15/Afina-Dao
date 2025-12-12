@@ -3,7 +3,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { checkRateLimit, isValidUUID } from './validation';
+import crypto from 'crypto';
 
 /**
  * Проверяет rate limit для запроса
@@ -164,6 +166,72 @@ export async function secureAPIEndpoint(
   }
   
   return null; // Все проверки пройдены
+}
+
+/**
+ * Проверяет аутентификацию администратора
+ */
+export async function checkAdminAuth(): Promise<NextResponse | null> {
+  try {
+    const cookieStore = await cookies();
+    const adminSession = cookieStore.get('admin-session');
+    
+    if (!adminSession || !adminSession.value) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Проверяем валидность сессии
+    const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
+    if (!SESSION_SECRET) {
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      const [ivHex, encryptedHex] = adminSession.value.split(':');
+      if (!ivHex || !encryptedHex) {
+        return NextResponse.json(
+          { error: 'Invalid session format' },
+          { status: 401 }
+        );
+      }
+
+      const iv = Buffer.from(ivHex, 'hex');
+      const key = Buffer.from(SESSION_SECRET.padEnd(32, '0').substring(0, 32));
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+      let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+
+      const sessionData = JSON.parse(decrypted);
+      
+      // Проверяем, не истекла ли сессия (24 часа)
+      const maxAge = 24 * 60 * 60 * 1000;
+      if (Date.now() - sessionData.timestamp > maxAge) {
+        return NextResponse.json(
+          { error: 'Session expired' },
+          { status: 401 }
+        );
+      }
+
+      return null; // Аутентификация успешна
+    } catch (decryptError) {
+      return NextResponse.json(
+        { error: 'Invalid session token' },
+        { status: 401 }
+      );
+    }
+  } catch (error) {
+    console.error('Auth check error:', error);
+    return NextResponse.json(
+      { error: 'Authentication failed' },
+      { status: 500 }
+    );
+  }
 }
 
 /**
