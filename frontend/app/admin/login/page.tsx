@@ -88,6 +88,15 @@ export default function AdminLoginPage() {
       try {
         const response = await fetch(`/api/auth?requestId=${requestId}`);
         
+        // Обрабатываем статус 410 (expired) отдельно
+        if (response.status === 410) {
+          const data = await response.json();
+          setMessage({ type: 'error', text: data.error || 'Request expired. Please try again.' });
+          setIsWaitingForConfirmation(false);
+          setRequestId(null);
+          return;
+        }
+        
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

@@ -246,4 +246,101 @@ elif pm2 list 2>/dev/null | grep -q "afina-dao-frontend"; then
 else
     print_warning "⚠ Could not verify application status. Check manually: pm2 list"
 fi
+
+# Step 9: Setup Telegram Webhook
+echo ""
+print_info "Step 9: Setting up Telegram Webhook..."
+# Wait a moment for server to be ready
+sleep 3
+
+# Function to read value from .env.local
+read_env_value() {
+    local key="$1"
+    local file="frontend/.env.local"
+    if [ -f "$file" ]; then
+        # Get the line, remove key and =, trim quotes and spaces
+        grep "^${key}=" "$file" 2>/dev/null | sed "s/^${key}=//" | sed 's/^["'\'']*//' | sed 's/["'\'']*$//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' || echo ""
+    fi
+}
+
+# Get values from .env.local
+BOT_TOKEN=$(read_env_value "TELEGRAM_BOT_TOKEN")
+SERVER_URL=$(read_env_value "NEXT_PUBLIC_API_URL")
+
+# Check if required values are set
+if [ -z "$BOT_TOKEN" ]; then
+    print_warning "TELEGRAM_BOT_TOKEN not found in frontend/.env.local - skipping webhook setup"
+elif [ -z "$SERVER_URL" ]; then
+    print_warning "NEXT_PUBLIC_API_URL not found in frontend/.env.local - skipping webhook setup"
+    print_info "Set NEXT_PUBLIC_API_URL to your public server URL (e.g., https://yourdomain.com)"
+else
+    # Remove trailing slash if present
+    SERVER_URL="${SERVER_URL%/}"
+    WEBHOOK_URL="${SERVER_URL}/api/telegram/webhook"
+    
+    print_info "Configuring webhook..."
+    print_info "  Bot Token: ${BOT_TOKEN:0:20}..."
+    print_info "  Server URL: ${SERVER_URL}"
+    print_info "  Webhook URL: ${WEBHOOK_URL}"
+    
+    # Check if server is accessible
+    print_info "Checking server accessibility..."
+    if curl -s -f --max-time 5 "${SERVER_URL}" > /dev/null 2>&1; then
+        print_success "Server is accessible"
+    else
+        print_warning "Server may not be accessible yet (this is OK if it's starting up)"
+    fi
+    
+    # Delete old webhook
+    print_info "Removing old webhook (if exists)..."
+    DELETE_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook" --max-time 10)
+    DELETE_OK=$(echo "$DELETE_RESPONSE" | grep -o '"ok":true' || echo "")
+    if [ -n "$DELETE_OK" ]; then
+        print_success "Old webhook removed"
+    else
+        print_info "No old webhook to remove (or already removed)"
+    fi
+    
+    # Set new webhook
+    print_info "Setting new webhook..."
+    SET_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+        -H "Content-Type: application/json" \
+        -d "{\"url\":\"${WEBHOOK_URL}\",\"allowed_updates\":[\"callback_query\"]}" \
+        --max-time 10)
+    
+    SET_OK=$(echo "$SET_RESPONSE" | grep -o '"ok":true' || echo "")
+    SET_ERROR=$(echo "$SET_RESPONSE" | grep -o '"description":"[^"]*"' | cut -d'"' -f4 || echo "")
+    
+    if [ -n "$SET_OK" ]; then
+        print_success "✅ Telegram webhook configured successfully!"
+        
+        # Get webhook info
+        print_info "Verifying webhook configuration..."
+        INFO_RESPONSE=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo" --max-time 10)
+        INFO_OK=$(echo "$INFO_RESPONSE" | grep -o '"ok":true' || echo "")
+        
+        if [ -n "$INFO_OK" ]; then
+            WEBHOOK_URL_SET=$(echo "$INFO_RESPONSE" | grep -o '"url":"[^"]*"' | cut -d'"' -f4 || echo "")
+            PENDING_COUNT=$(echo "$INFO_RESPONSE" | grep -o '"pending_update_count":[0-9]*' | cut -d':' -f2 || echo "0")
+            LAST_ERROR=$(echo "$INFO_RESPONSE" | grep -o '"last_error_message":"[^"]*"' | cut -d'"' -f4 || echo "none")
+            
+            print_success "Webhook URL: ${WEBHOOK_URL_SET}"
+            if [ "$PENDING_COUNT" -gt 0 ]; then
+                print_warning "Pending updates: ${PENDING_COUNT}"
+            fi
+            if [ "$LAST_ERROR" != "none" ] && [ -n "$LAST_ERROR" ]; then
+                print_warning "Last error: ${LAST_ERROR}"
+            fi
+        fi
+    else
+        print_error "Failed to set webhook"
+        if [ -n "$SET_ERROR" ]; then
+            print_error "Error: ${SET_ERROR}"
+        else
+            print_error "Response: ${SET_RESPONSE}"
+        fi
+        print_info "You can set it manually later using: ./setup-telegram-webhook.sh ${SERVER_URL}"
+    fi
+fi
+
 echo ""
