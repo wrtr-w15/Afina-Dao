@@ -2,21 +2,50 @@ import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 import { dbConfig } from '@/lib/database';
 import { sendTelegramMessage, answerCallbackQuery } from '@/lib/telegram';
+import { applyRateLimit } from '@/lib/security-middleware';
+import crypto from 'crypto';
+
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting для webhook (строгий - 10 запросов в минуту)
+    const rateLimitResult = applyRateLimit(request, 10, 60000);
+    if (rateLimitResult) {
+      console.warn('Rate limit exceeded for webhook');
+      return rateLimitResult;
+    }
+    
+    // Проверка секретного токена (если настроен)
+    if (TELEGRAM_WEBHOOK_SECRET) {
+      const secretToken = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+      if (!secretToken || secretToken !== TELEGRAM_WEBHOOK_SECRET) {
+        console.error('Invalid webhook secret token');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+    
     const body = await request.json();
-    console.log('📥 Webhook received:', JSON.stringify(body, null, 2));
+    
+    // Логируем только необходимую информацию без чувствительных данных
+    console.log('📥 Webhook received:', {
+      hasCallbackQuery: !!body.callback_query,
+      callbackDataPrefix: body.callback_query?.data?.substring(0, 20) || 'none',
+      messageId: body.callback_query?.message?.message_id || 'none'
+    });
     
     // Обрабатываем callback query (нажатие на кнопку)
     if (body.callback_query) {
-      console.log('🔔 Callback query detected!');
       const callbackData = body.callback_query.data;
       const chatId = body.callback_query.message.chat.id;
       const callbackQueryId = body.callback_query.id;
       
-      console.log('Callback data:', callbackData);
-      console.log('Chat ID:', chatId);
+      // Логируем без чувствительных данных
+      console.log('Callback query:', {
+        dataPrefix: callbackData?.substring(0, 20),
+        chatId: chatId ? '***' : 'none',
+        queryId: callbackQueryId ? '***' : 'none'
+      });
       
       if (callbackData.startsWith('approve_') || callbackData.startsWith('deny_')) {
         // Извлекаем requestId (UUID после префикса)
@@ -57,9 +86,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Если нет callback_query, логируем для отладки
+    // Если нет callback_query, логируем для отладки (без чувствительных данных)
     if (!body.callback_query) {
-      console.log('⚠️ Webhook received but no callback_query found. Body keys:', Object.keys(body));
+      console.log('⚠️ Webhook received but no callback_query found. Body type:', body.message ? 'message' : 'other');
     }
 
     return NextResponse.json({ ok: true });

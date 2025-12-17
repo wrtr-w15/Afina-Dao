@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { dbConfig } from '@/lib/database';
 import { sendTelegramMessage } from '@/lib/telegram';
+import { encryptSessionData, decryptSessionData, constantTimeCompare } from '@/lib/crypto-utils';
+import { applyRateLimit } from '@/lib/security-middleware';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -12,9 +14,24 @@ const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
 // POST /api/auth - создание запроса на логин
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting для защиты от brute force (5 попыток в 15 минут)
+    const rateLimitResult = applyRateLimit(request, 5, 15 * 60 * 1000);
+    if (rateLimitResult) {
+      return rateLimitResult;
+    }
+    
     const { password } = await request.json();
     
-    if (password !== ADMIN_PASSWORD) {
+    if (!ADMIN_PASSWORD) {
+      console.error('ADMIN_PASSWORD not configured');
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+    
+    // Защита от timing attacks
+    if (!constantTimeCompare(password || '', ADMIN_PASSWORD)) {
+      // Логируем попытку без чувствительных данных
+      const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+      console.warn('Failed login attempt from IP:', ip);
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
 
@@ -33,7 +50,8 @@ export async function POST(request: NextRequest) {
     );
     await connection.end();
 
-    console.log('Login request created:', { requestId, ip, userAgent });
+    // Логируем без чувствительных данных
+    console.log('Login request created:', { requestId, ip: ip.substring(0, 10) + '...', userAgent: userAgent.substring(0, 50) });
 
     // Отправляем сообщение в Telegram
     await sendLoginRequestToTelegram(requestId, ip, userAgent);
@@ -96,14 +114,13 @@ export async function GET(request: NextRequest) {
         userAgent: session.user_agent
       };
 
-      // Шифруем данные сессии
-      const iv = crypto.randomBytes(16);
-      const key = Buffer.from(SESSION_SECRET!.padEnd(32, '0').substring(0, 32));
-      const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-      let encrypted = cipher.update(JSON.stringify(sessionData), 'utf8', 'hex');
-      encrypted += cipher.final('hex');
+      // Шифруем данные сессии с использованием безопасного метода
+      if (!SESSION_SECRET) {
+        console.error('SESSION_SECRET not configured');
+        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      }
       
-      const encryptedData = iv.toString('hex') + ':' + encrypted;
+      const encryptedData = encryptSessionData(sessionData, SESSION_SECRET);
 
       // Устанавливаем cookie
       const cookieStore = await cookies();

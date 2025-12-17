@@ -12,7 +12,7 @@ export async function POST(
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     // Rate limiting

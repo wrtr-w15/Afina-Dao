@@ -266,6 +266,7 @@ read_env_value() {
 # Get values from .env.local
 BOT_TOKEN=$(read_env_value "TELEGRAM_BOT_TOKEN")
 SERVER_URL=$(read_env_value "NEXT_PUBLIC_API_URL")
+WEBHOOK_SECRET=$(read_env_value "TELEGRAM_WEBHOOK_SECRET")
 
 # Check if required values are set
 if [ -z "$BOT_TOKEN" ]; then
@@ -303,9 +304,20 @@ else
     
     # Set new webhook
     print_info "Setting new webhook..."
+    
+    # Формируем конфигурацию webhook
+    WEBHOOK_CONFIG="{\"url\":\"${WEBHOOK_URL}\",\"allowed_updates\":[\"callback_query\"]"
+    if [ -n "$WEBHOOK_SECRET" ]; then
+        WEBHOOK_CONFIG="${WEBHOOK_CONFIG},\"secret_token\":\"${WEBHOOK_SECRET}\""
+        print_info "  Using webhook secret token"
+    else
+        print_warning "  TELEGRAM_WEBHOOK_SECRET not set - webhook will be less secure"
+    fi
+    WEBHOOK_CONFIG="${WEBHOOK_CONFIG}}"
+    
     SET_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
         -H "Content-Type: application/json" \
-        -d "{\"url\":\"${WEBHOOK_URL}\",\"allowed_updates\":[\"callback_query\"]}" \
+        -d "${WEBHOOK_CONFIG}" \
         --max-time 10)
     
     SET_OK=$(echo "$SET_RESPONSE" | grep -o '"ok":true' || echo "")

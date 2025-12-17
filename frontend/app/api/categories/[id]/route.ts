@@ -53,7 +53,7 @@ export async function PUT(
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     const { id } = await params;
@@ -122,7 +122,7 @@ export async function DELETE(
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     const { id } = await params;

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { checkRateLimit, isValidUUID } from './validation';
 import crypto from 'crypto';
+import { decryptSessionData } from './crypto-utils';
 
 /**
  * Проверяет rate limit для запроса
@@ -171,7 +172,7 @@ export async function secureAPIEndpoint(
 /**
  * Проверяет аутентификацию администратора
  */
-export async function checkAdminAuth(): Promise<NextResponse | null> {
+export async function checkAdminAuth(request?: NextRequest): Promise<NextResponse | null> {
   try {
     const cookieStore = await cookies();
     const adminSession = cookieStore.get('admin-session');
@@ -193,21 +194,8 @@ export async function checkAdminAuth(): Promise<NextResponse | null> {
     }
 
     try {
-      const [ivHex, encryptedHex] = adminSession.value.split(':');
-      if (!ivHex || !encryptedHex) {
-        return NextResponse.json(
-          { error: 'Invalid session format' },
-          { status: 401 }
-        );
-      }
-
-      const iv = Buffer.from(ivHex, 'hex');
-      const key = Buffer.from(SESSION_SECRET.padEnd(32, '0').substring(0, 32));
-      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-      let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      const sessionData = JSON.parse(decrypted);
+      // Расшифровываем данные сессии с использованием безопасного метода
+      const sessionData = decryptSessionData(adminSession.value, SESSION_SECRET);
       
       // Проверяем, не истекла ли сессия (24 часа)
       const maxAge = 24 * 60 * 60 * 1000;
@@ -216,6 +204,28 @@ export async function checkAdminAuth(): Promise<NextResponse | null> {
           { error: 'Session expired' },
           { status: 401 }
         );
+      }
+
+      // Проверяем IP и User-Agent для защиты от кражи сессии
+      if (request) {
+        const currentIP = request.headers.get('x-forwarded-for') || 
+                         request.headers.get('x-real-ip') || 
+                         'unknown';
+        const currentUserAgent = request.headers.get('user-agent') || 'unknown';
+        
+        // Строгая проверка только в production (в dev может быть прокси/туннель)
+        if (process.env.NODE_ENV === 'production') {
+          if (sessionData.ip && sessionData.ip !== currentIP) {
+            console.warn('Session IP mismatch:', { 
+              sessionIP: sessionData.ip?.substring(0, 10) + '...', 
+              currentIP: currentIP.substring(0, 10) + '...' 
+            });
+            return NextResponse.json(
+              { error: 'Session validation failed' },
+              { status: 401 }
+            );
+          }
+        }
       }
 
       return null; // Аутентификация успешна

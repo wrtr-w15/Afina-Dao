@@ -123,7 +123,7 @@ export async function PUT(
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     // Rate limiting (более строгий для изменяющих операций)
@@ -237,7 +237,7 @@ export async function DELETE(
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     // Rate limiting (строгий для удаления)

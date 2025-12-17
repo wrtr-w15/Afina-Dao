@@ -4,19 +4,23 @@ import { dbConfig } from '../../../../lib/database';
 import { PricingSettings, CreatePricingSettingsData, UpdatePricingSettingsData } from '../../../../types/pricing';
 
 // OPTIONS /api/admin/pricing - CORS preflight
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || (origin && origin.includes('localhost') ? origin : '');
+  
   return new NextResponse(null, {
     status: 200,
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': allowedOrigin || 'null',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
     }
   });
 }
 
 // GET /api/admin/pricing - получить настройки цен
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const connection = await mysql.createConnection(dbConfig);
     
@@ -45,11 +49,15 @@ export async function GET() {
       updatedAt: settings.updated_at
     };
 
+    const origin = request.headers.get('origin');
+    const allowedOrigin = process.env.ALLOWED_ORIGIN || (origin && origin.includes('localhost') ? origin : '');
+    
     return NextResponse.json(formattedSettings, {
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': allowedOrigin || 'null',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
       }
     });
   } catch (error) {
@@ -63,7 +71,7 @@ export async function POST(request: NextRequest) {
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     const data: CreatePricingSettingsData = await request.json();
@@ -96,7 +104,7 @@ export async function PUT(request: NextRequest) {
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth();
+    const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
     const data: UpdatePricingSettingsData = await request.json();

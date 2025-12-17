@@ -52,7 +52,33 @@ const nextConfig = {
           },
           {
             key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin'
+            value: 'strict-origin-when-cross-origin'
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              // unsafe-inline необходим для Next.js, но можно улучшить используя nonce
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // TODO: использовать nonce для production
+              "style-src 'self' 'unsafe-inline'", // Next.js требует для стилей
+              "img-src 'self' data: https:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://api.telegram.org",
+              "frame-ancestors 'self'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "object-src 'none'",
+              "upgrade-insecure-requests"
+            ].join('; ')
+          },
+          {
+            key: 'Permissions-Policy',
+            value: [
+              'camera=()',
+              'microphone=()',
+              'geolocation=()',
+              'interest-cohort=()'
+            ].join(', ')
           },
         ],
       },

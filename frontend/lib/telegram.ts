@@ -1,5 +1,6 @@
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 
 export async function setupTelegramWebhook() {
   if (!TELEGRAM_BOT_TOKEN) {
@@ -22,15 +23,22 @@ export async function setupTelegramWebhook() {
     }
 
     // Устанавливаем новый webhook
+    const webhookConfig: any = {
+      url: webhookUrl,
+      allowed_updates: ['callback_query'] // Только callback_query для безопасности
+    };
+    
+    // Добавляем секретный токен если настроен
+    if (TELEGRAM_WEBHOOK_SECRET) {
+      webhookConfig.secret_token = TELEGRAM_WEBHOOK_SECRET;
+    }
+    
     const setResponse = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: webhookUrl,
-          allowed_updates: ['message', 'callback_query']
-        })
+        body: JSON.stringify(webhookConfig)
       }
     );
 
