@@ -43,18 +43,48 @@ export async function POST(request: NextRequest) {
     const requestId = crypto.randomUUID();
     
     // Сохраняем запрос в базу данных
-    const connection = await mysql.createConnection(dbConfig);
-    await connection.execute(
-      'INSERT INTO auth_sessions (id, ip, user_agent, status) VALUES (?, ?, ?, ?)',
-      [requestId, ip, userAgent, 'pending']
-    );
-    await connection.end();
-
-    // Логируем без чувствительных данных
-    console.log('Login request created:', { requestId, ip: ip.substring(0, 10) + '...', userAgent: userAgent.substring(0, 50) });
+    let connection;
+    try {
+      connection = await mysql.createConnection(dbConfig);
+      const [result] = await connection.execute(
+        'INSERT INTO auth_sessions (id, ip, user_agent, status) VALUES (?, ?, ?, ?)',
+        [requestId, ip, userAgent, 'pending']
+      );
+      
+      const affectedRows = (result as any).affectedRows;
+      console.log('✅ Login request created in DB:', { 
+        requestId, 
+        ip: ip.substring(0, 10) + '...', 
+        userAgent: userAgent.substring(0, 50),
+        affectedRows 
+      });
+      
+      if (affectedRows === 0) {
+        console.error('❌ Failed to insert auth session into database - affectedRows is 0');
+        await connection.end();
+        return NextResponse.json({ error: 'Failed to create login request' }, { status: 500 });
+      }
+      
+      await connection.end();
+    } catch (dbError) {
+      console.error('❌ Database error creating auth session:', dbError);
+      if (connection) {
+        await connection.end().catch(() => {});
+      }
+      return NextResponse.json({ 
+        error: 'Database error',
+        details: dbError instanceof Error ? dbError.message : 'Unknown error'
+      }, { status: 500 });
+    }
 
     // Отправляем сообщение в Telegram
-    await sendLoginRequestToTelegram(requestId, ip, userAgent);
+    try {
+      await sendLoginRequestToTelegram(requestId, ip, userAgent);
+      console.log('✅ Telegram message sent for request:', requestId);
+    } catch (telegramError) {
+      console.error('❌ Error sending Telegram message:', telegramError);
+      // Не прерываем процесс, так как запрос уже создан в БД
+    }
 
     return NextResponse.json({ 
       success: true, 
@@ -88,9 +118,10 @@ export async function GET(request: NextRequest) {
 
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ 
-        status: 'pending',
-        message: 'Waiting for confirmation...'
-      });
+        status: 'expired',
+        error: 'Request not found or expired',
+        success: false
+      }, { status: 410 });
     }
 
     const session = rows[0] as any;
@@ -100,7 +131,8 @@ export async function GET(request: NextRequest) {
     if (Date.now() - createdAt > 5 * 60 * 1000) {
       return NextResponse.json({ 
         status: 'expired',
-        error: 'Request expired' 
+        error: 'Request not found or expired',
+        success: false
       }, { status: 410 });
     }
 

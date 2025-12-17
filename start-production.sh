@@ -158,15 +158,99 @@ fi
 cd .. || exit 1
 print_success "Project built successfully"
 
-# Step 4: Create logs directory
+# Step 4: Apply database migrations
 echo ""
-print_info "Step 4: Creating logs directory..."
+print_info "Step 4: Applying database migrations..."
+
+# Function to read value from .env.local
+read_env_value() {
+    local key="$1"
+    local file="frontend/.env.local"
+    if [ -f "$file" ]; then
+        grep "^${key}=" "$file" 2>/dev/null | sed "s/^${key}=//" | sed 's/^["'\'']*//' | sed 's/["'\'']*$//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' || echo ""
+    fi
+}
+
+# Get database credentials from .env.local
+DB_HOST=$(read_env_value "DB_HOST")
+DB_PORT=$(read_env_value "DB_PORT")
+DB_USER=$(read_env_value "DB_USER")
+DB_PASSWORD=$(read_env_value "DB_PASSWORD")
+DB_NAME=$(read_env_value "DB_NAME")
+
+# Set defaults if not specified
+DB_HOST=${DB_HOST:-localhost}
+DB_PORT=${DB_PORT:-3306}
+DB_USER=${DB_USER:-root}
+DB_NAME=${DB_NAME:-afina_dao_wiki}
+
+if [ -z "$DB_HOST" ] || [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
+    print_warning "Database credentials not fully configured in frontend/.env.local"
+    print_warning "Skipping database migrations. Please apply them manually."
+else
+    print_info "Checking database connection..."
+    
+    # Check if MySQL client is available
+    if ! command -v mysql &> /dev/null; then
+        print_warning "MySQL client not found. Skipping migrations."
+        print_info "Please apply migrations manually or install MySQL client"
+    else
+        # Build MySQL command
+        MYSQL_CMD="mysql -h ${DB_HOST} -P ${DB_PORT} -u ${DB_USER}"
+        if [ -n "$DB_PASSWORD" ]; then
+            MYSQL_CMD="${MYSQL_CMD} -p${DB_PASSWORD}"
+        fi
+        MYSQL_CMD="${MYSQL_CMD} ${DB_NAME}"
+        
+        # Test connection
+        if echo "SELECT 1;" | $MYSQL_CMD > /dev/null 2>&1; then
+            print_success "Database connection successful"
+            
+            # Check if subscription_pricing table exists
+            TABLE_EXISTS=$(echo "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${DB_NAME}' AND table_name = 'subscription_pricing';" | $MYSQL_CMD 2>/dev/null | tail -n 1 | tr -d ' ')
+            
+            if [ "$TABLE_EXISTS" = "0" ]; then
+                print_info "Table subscription_pricing does not exist. Creating..."
+                
+                # Apply migration
+                if [ -f "frontend/database/migrations/create_subscription_pricing.sql" ]; then
+                    if $MYSQL_CMD < "frontend/database/migrations/create_subscription_pricing.sql" 2>/dev/null; then
+                        print_success "✅ Table subscription_pricing created successfully"
+                    else
+                        print_error "Failed to create subscription_pricing table"
+                        print_info "You can apply the migration manually:"
+                        print_info "  mysql -h ${DB_HOST} -u ${DB_USER} -p ${DB_NAME} < frontend/database/migrations/create_subscription_pricing.sql"
+                    fi
+                else
+                    print_warning "Migration file not found: frontend/database/migrations/create_subscription_pricing.sql"
+                fi
+            else
+                print_success "Table subscription_pricing already exists"
+                
+                # Check if table has data, if not, insert default values
+                ROW_COUNT=$(echo "SELECT COUNT(*) FROM subscription_pricing;" | $MYSQL_CMD 2>/dev/null | tail -n 1 | tr -d ' ')
+                if [ "$ROW_COUNT" = "0" ]; then
+                    print_info "Table is empty. Inserting default values..."
+                    echo "INSERT INTO subscription_pricing (id, period_months, monthly_price) VALUES (UUID(), 1, 99.00), (UUID(), 3, 89.00), (UUID(), 6, 79.00) ON DUPLICATE KEY UPDATE monthly_price = VALUES(monthly_price);" | $MYSQL_CMD 2>/dev/null && print_success "Default values inserted" || print_warning "Failed to insert default values"
+                fi
+            fi
+        else
+            print_warning "Cannot connect to database. Skipping migrations."
+            print_info "Please check database credentials in frontend/.env.local"
+            print_info "You can apply migrations manually later"
+        fi
+    fi
+fi
+
+# Step 5: Create logs directory
+echo ""
+print_info "Step 5: Creating logs directory..."
 mkdir -p logs
 print_success "Logs directory created"
 
-# Step 5: Stop existing application process (if exists)
+# Step 6: Stop existing application process (if exists)
 echo ""
-print_info "Step 5: Checking for existing application process..."
+print_info "Step 6: Checking for existing application process..."
 if pm2 list 2>/dev/null | grep -q "afina-dao-frontend"; then
     print_info "Stopping existing afina-dao-frontend process..."
     pm2 stop afina-dao-frontend 2>/dev/null || true
@@ -177,9 +261,9 @@ else
     print_info "No existing afina-dao-frontend process found"
 fi
 
-# Step 6: Start with PM2
+# Step 7: Start with PM2
 echo ""
-print_info "Step 6: Starting application with PM2..."
+print_info "Step 7: Starting application with PM2..."
 if [ ! -f "ecosystem.config.js" ]; then
     print_error "ecosystem.config.js not found!"
     exit 1
@@ -193,9 +277,9 @@ fi
 
 print_success "Application started with PM2"
 
-# Step 7: Save PM2 configuration
+# Step 8: Save PM2 configuration
 echo ""
-print_info "Step 7: Saving PM2 configuration..."
+print_info "Step 8: Saving PM2 configuration..."
 if pm2 save; then
     print_success "PM2 configuration saved"
 else
@@ -203,7 +287,7 @@ else
     print_info "You can save it later manually with: pm2 save"
 fi
 
-# Step 8: Setup PM2 startup script (optional)
+# Step 9: Setup PM2 startup script (optional)
 echo ""
 read -p "Setup PM2 to start on system boot? (y/n) " -n 1 -r
 echo
@@ -247,21 +331,11 @@ else
     print_warning "⚠ Could not verify application status. Check manually: pm2 list"
 fi
 
-# Step 9: Setup Telegram Webhook
+# Step 10: Setup Telegram Webhook
 echo ""
-print_info "Step 9: Setting up Telegram Webhook..."
+print_info "Step 10: Setting up Telegram Webhook..."
 # Wait a moment for server to be ready
 sleep 3
-
-# Function to read value from .env.local
-read_env_value() {
-    local key="$1"
-    local file="frontend/.env.local"
-    if [ -f "$file" ]; then
-        # Get the line, remove key and =, trim quotes and spaces
-        grep "^${key}=" "$file" 2>/dev/null | sed "s/^${key}=//" | sed 's/^["'\'']*//' | sed 's/["'\'']*$//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' || echo ""
-    fi
-}
 
 # Get values from .env.local
 BOT_TOKEN=$(read_env_value "TELEGRAM_BOT_TOKEN")

@@ -5,33 +5,41 @@ import { Category, CreateCategoryData } from '../../../types/category';
 
 // GET /api/categories - получить все категории
 export async function GET() {
+  let connection;
   try {
-    const connection = await mysql.createConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
     
     const [categories] = await connection.execute(`
       SELECT * FROM categories 
-      ORDER BY is_active DESC, sort_order ASC, name ASC
+      ORDER BY isActive DESC, sortOrder ASC, name ASC
     `);
 
     await connection.end();
 
     // Преобразуем данные из базы в формат фронтенда
+    // Структура таблицы использует camelCase
     const formattedCategories = (categories as any[]).map(category => ({
       id: category.id,
       name: category.name,
-      description: category.description,
-      color: category.color,
-      icon: category.icon,
-      isActive: Boolean(category.is_active),
-      sortOrder: category.sort_order,
-      createdAt: category.created_at,
-      updatedAt: category.updated_at
+      description: category.description || null,
+      color: category.color || '#3B82F6', // Значение по умолчанию если поля нет
+      icon: category.icon || null,
+      isActive: Boolean(category.isActive),
+      sortOrder: category.sortOrder || 0,
+      createdAt: category.createdAt,
+      updatedAt: category.updatedAt
     }));
 
     return NextResponse.json(formattedCategories);
   } catch (error) {
     console.error('Error fetching categories:', error);
-    return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
+    if (connection) {
+      await connection.end().catch(() => {});
+    }
+    return NextResponse.json({ 
+      error: 'Failed to fetch categories',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
@@ -58,15 +66,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Создаем новую категорию
+    // Структура таблицы использует camelCase
     const [result] = await connection.execute(`
-      INSERT INTO categories (name, description, color, icon, is_active, sort_order)
+      INSERT INTO categories (name, description, color, icon, isActive, sortOrder)
       VALUES (?, ?, ?, ?, ?, ?)
     `, [
       data.name,
       data.description || null,
-      data.color,
+      data.color || '#3B82F6',
       data.icon || null,
-      data.isActive !== false,
+      data.isActive !== false ? 1 : 0,
       data.sortOrder || 0
     ]);
 

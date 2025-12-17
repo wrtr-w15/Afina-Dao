@@ -28,3 +28,17 @@ export interface PricingCalculation {
   discountedPrice: number;
   totalPrice: number;
 }
+
+// Типы для цен подписок на странице private-community
+export interface SubscriptionPricing {
+  id: string;
+  periodMonths: number;
+  monthlyPrice: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateSubscriptionPricingData {
+  periodMonths: number;
+  monthlyPrice: number;
+}

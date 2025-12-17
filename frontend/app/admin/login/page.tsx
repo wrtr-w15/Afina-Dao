@@ -91,14 +91,15 @@ export default function AdminLoginPage() {
         // Обрабатываем статус 410 (expired) отдельно
         if (response.status === 410) {
           const data = await response.json();
-          setMessage({ type: 'error', text: data.error || 'Request expired. Please try again.' });
+          setMessage({ type: 'error', text: data.error || '❌ Request not found or expired' });
           setIsWaitingForConfirmation(false);
           setRequestId(null);
           return;
         }
         
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
         }
         
         const data = await response.json();
@@ -115,7 +116,7 @@ export default function AdminLoginPage() {
           setRequestId(null);
           return;
         } else if (data.status === 'expired') {
-          setMessage({ type: 'error', text: 'Request expired. Please try again.' });
+          setMessage({ type: 'error', text: '❌ Request not found or expired' });
           setIsWaitingForConfirmation(false);
           setRequestId(null);
           return;

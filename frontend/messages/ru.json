@@ -93,6 +93,8 @@
     "productsComingSoon": "Продукты будут добавлены позже",
     "aboutAfinaDAO": "Про Afina DAO",
     "pricing": "Тарифы",
+    "privateCommunity": "Сообщество",
+    "new": "Новое",
     "poweredBy": "Powered By",
     "afina": "Afina",
     "noProjects": "Проектов пока нет"
@@ -195,5 +197,86 @@
     "projects2": "проекта",
     "accounts": "аккаунтов",
     "specifyParameters": "Укажите параметры для расчета стоимости"
+  },
+  "privateCommunity": {
+    "title": "Сообщество",
+    "description": "AfinaDAO WorkShop — приватное сообщество для запуска UI-скриптов на Afina",
+    "banner": {
+      "text": "Open Now"
+    },
+    "header": {
+      "title": "AfinaDAO WorkShop",
+      "subtitle": "Приватное сообщество для тех, кто хочет запускать UI-скрипты на Afina и участвовать в актуальных активностях. Мы создали его для пользователей, которым важна самостоятельная установка, стабильная работа и прямой доступ к поддержке."
+    },
+    "benefits": {
+      "title": "Что ты получаешь внутри AfinaDAO WorkShop:",
+      "benefit1": "Доступ ко всем UI-скриптам, которые представлены на этом сайте",
+      "benefit2": "Полные версии без ограничений и со всеми активностями",
+      "benefit3": "Техподдержка + помощь с установкой (до результата)",
+      "benefit4": "Текстовые гайды и видео-инструкции по запуску и настройке",
+      "benefit5": "Поддержка скриптов в рабочем состоянии + прямое общение с разработчиками",
+      "benefit6": "Можно предлагать свои проекты под реализацию и автоматизацию",
+      "benefit7": "Комьюнити людей с теми же целями: тестнеты, ончейн-активности, фарм и т.д.",
+      "benefit8": "И много другого, что постоянно добавляется по запросам участников"
+    },
+    "telegram": {
+      "title": "Больше информации",
+      "description": "Больше информации — в нашем Telegram-канале.",
+      "link": "",
+      "button": "Перейти в Telegram-канал"
+    },
+    "contact": {
+      "title": "Контакты",
+      "description": "Если вы заинтересованы в приобретении и т.д. или хотите задать вопросы, пишите в Telegram @acycas / @kirjeyy"
+    },
+    "priceCard": {
+      "badge": "Специальное предложение",
+      "title": "AfinaDAO WorkShop",
+      "description": "Полный доступ ко всем возможностям",
+      "price": "99$",
+      "period": "/месяц",
+      "button": "Присоединиться",
+      "link": ""
+    },
+    "pricing": {
+      "title": "Выберите подписку",
+      "subscription": "Subscription",
+      "period1": {
+        "badge": "1 месяц",
+        "title": "Подписка на 1 месяц",
+        "periodTitle": "1 Month",
+        "description": "Базовая цена",
+        "pricePerMonth": "Цена за месяц",
+        "monthlyPrice": "99$",
+        "period": "/месяц",
+        "totalPrice": "Полная стоимость",
+        "total": "99$",
+        "basePrice": "Базовая цена"
+      },
+      "period3": {
+        "badge": "3 месяца",
+        "title": "Подписка на 3 месяца",
+        "periodTitle": "3 Months",
+        "description": "Экономия при оплате сразу",
+        "savings": "Экономия 30$",
+        "pricePerMonth": "Цена за месяц",
+        "monthlyPrice": "89$",
+        "period": "/месяц",
+        "totalPrice": "Полная стоимость",
+        "total": "267$"
+      },
+      "period6": {
+        "badge": "6 месяцев",
+        "title": "Подписка на 6 месяцев",
+        "periodTitle": "6 Months",
+        "description": "Максимальная экономия",
+        "savings": "Экономия 120$",
+        "pricePerMonth": "Цена за месяц",
+        "monthlyPrice": "79$",
+        "period": "/месяц",
+        "totalPrice": "Полная стоимость",
+        "total": "474$"
+      }
+    }
   }
 }

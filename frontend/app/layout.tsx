@@ -28,6 +28,29 @@ export default async function RootLayout({
   return (
     <html lang={locale}>
       <body className={montserrat.className}>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Suppress browser extension errors (e.g., MetaMask, Web3 wallets)
+              if (typeof window !== 'undefined') {
+                const originalError = console.error;
+                console.error = function(...args) {
+                  const errorMessage = args.join(' ');
+                  // Filter out common browser extension errors
+                  if (
+                    errorMessage.includes('Cannot redefine property: ethereum') ||
+                    errorMessage.includes('chrome-extension://') ||
+                    errorMessage.includes('moz-extension://') ||
+                    errorMessage.includes('evmAsk.js')
+                  ) {
+                    return; // Suppress these errors
+                  }
+                  originalError.apply(console, args);
+                };
+              }
+            `,
+          }}
+        />
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider>
             {children}

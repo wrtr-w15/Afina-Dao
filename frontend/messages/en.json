@@ -93,6 +93,8 @@
     "productsComingSoon": "Products will be added later",
     "aboutAfinaDAO": "About Afina DAO",
     "pricing": "Pricing",
+    "privateCommunity": "Community",
+    "new": "New",
     "poweredBy": "Powered By",
     "afina": "Afina",
     "noProjects": "No projects yet"
@@ -195,5 +197,86 @@
     "projects2": "projects",
     "accounts": "accounts",
     "specifyParameters": "Specify parameters to calculate the cost"
+  },
+  "privateCommunity": {
+    "title": "Community",
+    "description": "AfinaDAO WorkShop — private community for running UI scripts on Afina",
+    "banner": {
+      "text": "Open Now"
+    },
+    "header": {
+      "title": "AfinaDAO WorkShop",
+      "subtitle": "A private community for those who want to run UI scripts on Afina and participate in current activities. We created it for users who value independent installation, stable operation, and direct access to support."
+    },
+    "benefits": {
+      "title": "What you get inside AfinaDAO WorkShop:",
+      "benefit1": "Access to all UI scripts presented on this site",
+      "benefit2": "Full versions without restrictions and with all activities",
+      "benefit3": "Technical support + installation assistance (until result)",
+      "benefit4": "Text guides and video instructions for launch and setup",
+      "benefit5": "Script maintenance in working condition + direct communication with developers",
+      "benefit6": "You can propose your projects for implementation and automation",
+      "benefit7": "Community of people with the same goals: testnets, on-chain activities, farming, etc.",
+      "benefit8": "And much more that is constantly added at the request of participants"
+    },
+    "telegram": {
+      "title": "More information",
+      "description": "More information — in our Telegram channel.",
+      "link": "",
+      "button": "Go to Telegram channel"
+    },
+    "contact": {
+      "title": "Contacts",
+      "description": "If you are interested in purchasing or have questions, write to us on Telegram @acycas / @kirjeyy"
+    },
+    "priceCard": {
+      "badge": "Special Offer",
+      "title": "AfinaDAO WorkShop",
+      "description": "Full access to all features",
+      "price": "$99",
+      "period": "/month",
+      "button": "Join Now",
+      "link": ""
+    },
+    "pricing": {
+      "title": "Choose Your Plan",
+      "subscription": "Subscription",
+      "period1": {
+        "badge": "1 month",
+        "title": "1 Month Subscription",
+        "periodTitle": "1 Month",
+        "description": "Base price",
+        "pricePerMonth": "Price per month",
+        "monthlyPrice": "$99",
+        "period": "/month",
+        "totalPrice": "Total cost",
+        "total": "$99",
+        "basePrice": "Base price"
+      },
+      "period3": {
+        "badge": "3 months",
+        "title": "3 Months Subscription",
+        "periodTitle": "3 Months",
+        "description": "Save when paying upfront",
+        "savings": "Save $30",
+        "pricePerMonth": "Price per month",
+        "monthlyPrice": "$89",
+        "period": "/month",
+        "totalPrice": "Total cost",
+        "total": "$267"
+      },
+      "period6": {
+        "badge": "6 months",
+        "title": "6 Months Subscription",
+        "periodTitle": "6 Months",
+        "description": "Maximum savings",
+        "savings": "Save $120",
+        "pricePerMonth": "Price per month",
+        "monthlyPrice": "$79",
+        "period": "/month",
+        "totalPrice": "Total cost",
+        "total": "$474"
+      }
+    }
   }
 }

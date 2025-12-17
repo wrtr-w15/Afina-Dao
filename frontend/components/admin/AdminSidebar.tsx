@@ -9,7 +9,8 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  DollarSign
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
@@ -71,6 +72,13 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
       icon: Settings,
       path: '/admin/settings',
       description: 'Системные настройки'
+    },
+    {
+      id: 'subscription-pricing',
+      label: 'Цены подписок',
+      icon: DollarSign,
+      path: '/admin/subscription-pricing',
+      description: 'Управление ценами Private Community'
     }
   ];
 

@@ -37,52 +37,106 @@ export async function POST(request: NextRequest) {
     // Обрабатываем callback query (нажатие на кнопку)
     if (body.callback_query) {
       const callbackData = body.callback_query.data;
-      const chatId = body.callback_query.message.chat.id;
+      const chatId = body.callback_query.message?.chat?.id;
       const callbackQueryId = body.callback_query.id;
       
       // Логируем без чувствительных данных
-      console.log('Callback query:', {
-        dataPrefix: callbackData?.substring(0, 20),
+      console.log('📱 Callback query received:', {
+        dataPrefix: callbackData?.substring(0, 30),
         chatId: chatId ? '***' : 'none',
-        queryId: callbackQueryId ? '***' : 'none'
+        queryId: callbackQueryId ? '***' : 'none',
+        fullData: callbackData
       });
       
-      if (callbackData.startsWith('approve_') || callbackData.startsWith('deny_')) {
+      if (callbackData && (callbackData.startsWith('approve_') || callbackData.startsWith('deny_'))) {
         // Извлекаем requestId (UUID после префикса)
         const requestId = callbackData.substring(callbackData.indexOf('_') + 1);
         const approved = callbackData.startsWith('approve_');
         
+        console.log(`🔍 Processing ${approved ? 'approval' : 'denial'} for requestId: ${requestId}`);
+        
         // Валидация UUID формата (36 символов с дефисами)
         if (!requestId || requestId.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
-          console.error('Invalid requestId format:', requestId);
-          await answerCallbackQuery(callbackQueryId, '❌ Invalid request ID');
+          console.error('❌ Invalid requestId format:', requestId, 'Length:', requestId?.length);
+          if (callbackQueryId) {
+            await answerCallbackQuery(callbackQueryId, '❌ Invalid request ID').catch(err => {
+              console.error('Error answering callback:', err);
+            });
+          }
           return NextResponse.json({ ok: true });
         }
         
         // Обновляем статус в базе данных
-        const connection = await mysql.createConnection(dbConfig);
-        const [result] = await connection.execute(
-          'UPDATE auth_sessions SET status = ? WHERE id = ?',
-          [approved ? 'approved' : 'denied', requestId]
-        );
-        await connection.end();
-        
-        const affectedRows = (result as any).affectedRows;
-        console.log(`📝 Confirmation set in DB: ${requestId} - ${approved ? 'approved' : 'denied'} (affected rows: ${affectedRows})`);
-        
-        if (affectedRows > 0) {
-          // Отвечаем на callback query (убирает "loading" в Telegram)
-          const message = approved ? '✅ Access approved' : '❌ Access denied';
-          await answerCallbackQuery(callbackQueryId, message);
+        let connection;
+        try {
+          connection = await mysql.createConnection(dbConfig);
           
-          // Отправляем сообщение в чат
-          await sendTelegramMessage(chatId, message);
-          console.log(`✅ Successfully processed ${approved ? 'approval' : 'denial'} for request ${requestId}`);
-        } else {
-          console.warn(`⚠️ Request not found in DB: ${requestId}`);
-          await answerCallbackQuery(callbackQueryId, '❌ Request not found or expired');
-          await sendTelegramMessage(chatId, '❌ Request not found or expired');
+          // Сначала проверяем, существует ли запрос
+          const [checkRows] = await connection.execute(
+            'SELECT id, status FROM auth_sessions WHERE id = ?',
+            [requestId]
+          );
+          
+          if (!Array.isArray(checkRows) || checkRows.length === 0) {
+            console.warn(`⚠️ Request ${requestId} not found in DB before update`);
+            await connection.end();
+            if (callbackQueryId) {
+              await answerCallbackQuery(callbackQueryId, '❌ Request not found or expired').catch(err => {
+                console.error('Error answering callback:', err);
+              });
+            }
+            if (chatId) {
+              await sendTelegramMessage(chatId, '❌ Request not found or expired').catch(err => {
+                console.error('Error sending message:', err);
+              });
+            }
+            return NextResponse.json({ ok: true });
+          }
+          
+          const [result] = await connection.execute(
+            'UPDATE auth_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [approved ? 'approved' : 'denied', requestId]
+          );
+          await connection.end();
+          
+          const affectedRows = (result as any).affectedRows;
+          console.log(`📝 DB Update result: ${requestId} - ${approved ? 'approved' : 'denied'} (affected rows: ${affectedRows})`);
+          
+          if (affectedRows > 0) {
+            // Отвечаем на callback query (убирает "loading" в Telegram)
+            const message = approved ? '✅ Access approved' : '❌ Access denied';
+            if (callbackQueryId) {
+              await answerCallbackQuery(callbackQueryId, message).catch(err => {
+                console.error('Error answering callback:', err);
+              });
+            }
+            
+            // Отправляем сообщение в чат
+            if (chatId) {
+              await sendTelegramMessage(chatId, message).catch(err => {
+                console.error('Error sending message:', err);
+              });
+            }
+            console.log(`✅ Successfully processed ${approved ? 'approval' : 'denial'} for request ${requestId}`);
+          } else {
+            console.warn(`⚠️ No rows affected for request ${requestId}`);
+            if (callbackQueryId) {
+              await answerCallbackQuery(callbackQueryId, '❌ Update failed').catch(err => {
+                console.error('Error answering callback:', err);
+              });
+            }
+          }
+        } catch (dbError) {
+          console.error('❌ Database error updating auth session:', dbError);
+          if (connection) {
+            await connection.end().catch(() => {});
+          }
+          if (callbackQueryId) {
+            await answerCallbackQuery(callbackQueryId, '❌ Database error').catch(() => {});
+          }
         }
+      } else {
+        console.warn('⚠️ Callback data does not start with approve_ or deny_:', callbackData);
       }
     }
 

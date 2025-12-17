@@ -87,7 +87,12 @@ export default function MenuContent({ projects, isLoading = false, onItemClick, 
                         ? 'text-blue-600 dark:text-blue-400' 
                         : 'text-gray-500 dark:text-gray-400'
                     }`} />
-                    {t(item.translationKey)}
+                    <span className="flex-1">{t(item.translationKey)}</span>
+                    {item.isNew && (
+                      <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-green-500 text-white dark:bg-green-600">
+                        {t('new')}
+                      </span>
+                    )}
                   </button>
                 );
               })}
