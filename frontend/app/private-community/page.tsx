@@ -22,7 +22,12 @@ export default function PrivateCommunityPage() {
     { key: 'benefit5' },
     { key: 'benefit6' },
     { key: 'benefit7' },
-    { key: 'benefit8' }
+    { key: 'benefit8' },
+    { key: 'benefit9' },
+    { key: 'benefit10' },
+    { key: 'benefit11' },
+    { key: 'benefit12' },
+    { key: 'benefit13' }
   ];
 
   useEffect(() => {
@@ -371,7 +376,14 @@ export default function PrivateCommunityPage() {
                   </h2>
                 </div>
                 <p className="text-gray-700 dark:text-gray-300 leading-relaxed max-w-2xl mx-auto">
-                  {t('contact.description')}
+                  {t('contact.description')}{' '}
+                  <Link
+                    href="/private-community/rules"
+                    className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 underline font-medium transition-colors"
+                  >
+                    {t('contact.rulesLink')}
+                  </Link>
+                  {' '}{t('contact.descriptionEnd')}
                 </p>
               </div>
               

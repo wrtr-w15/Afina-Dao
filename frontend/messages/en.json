@@ -217,7 +217,12 @@
       "benefit5": "Script maintenance in working condition + direct communication with developers",
       "benefit6": "You can propose your projects for implementation and automation",
       "benefit7": "Community of people with the same goals: testnets, on-chain activities, farming, etc.",
-      "benefit8": "And much more that is constantly added at the request of participants"
+      "benefit8": "Ready scripts for current activities (regular updates and support)",
+      "benefit9": "Clear workflow structure: suitable for both beginners and advanced Afina users",
+      "benefit10": "Discussion chat: ideas, cases, experience, mutual assistance",
+      "benefit11": "Weekly calls: new projects, setup, answers to questions",
+      "benefit12": "Unique guides and video tutorials from developers: tips, nuances, useful techniques for working with Afina",
+      "benefit13": "And much more that is constantly added at the request of participants"
     },
     "telegram": {
       "title": "More information",
@@ -227,7 +232,9 @@
     },
     "contact": {
       "title": "Contacts",
-      "description": "If you are interested in purchasing or have questions, write to us on Telegram @acycas / @kirjeyy"
+      "description": "If you are interested in purchasing or have questions, write to us on Telegram @acycas / @kirjeyy. Please read the",
+      "rulesLink": "terms and conditions",
+      "descriptionEnd": "of service."
     },
     "priceCard": {
       "badge": "Special Offer",
@@ -276,6 +283,152 @@
         "period": "/month",
         "totalPrice": "Total cost",
         "total": "$474"
+      }
+    }
+  },
+  "rules": {
+    "title": "Terms and Conditions",
+    "description": "Please carefully read the rules for using the AfinaDAO WorkShop private community",
+    "backToCommunity": "Back to Community",
+    "section2": {
+      "title": "SUBJECT AND SCOPE OF SERVICES",
+      "item1": {
+        "number": "2.1",
+        "text": "The Team provides the Participant with access to the private community and current versions of software/scripts, as well as support on issues related to script operation."
+      },
+      "item2": {
+        "number": "2.2",
+        "text": "The Team independently determines the list of activities that will be implemented/maintained in the scripts."
+      },
+      "item3": {
+        "number": "2.3",
+        "text": "Participants may suggest ideas/projects, but the Team is not obligated to accept proposals for work."
+      }
+    },
+    "section3": {
+      "title": "TEAM OBLIGATIONS",
+      "item1": {
+        "number": "3.1",
+        "text": "Publish monthly solutions (updates/releases) and maintain them in working condition within reasonable technical capabilities."
+      },
+      "item2": {
+        "number": "3.2",
+        "text": "Help with problems that relate to scripts (errors, settings, typical questions)."
+      },
+      "item3": {
+        "number": "3.3",
+        "text": "Provide access to current versions of software/scripts within an active subscription."
+      }
+    },
+    "section4": {
+      "title": "IMPORTANT LIMITATIONS (DISCLAIMER)",
+      "item1": {
+        "number": "4.1",
+        "text": "The Team does not guarantee receiving a drop, profit, reward, or any result from activities performed by scripts."
+      },
+      "item2": {
+        "number": "4.2",
+        "text": "The Team is not responsible for changes on third-party platforms/sites/networks, blocks, sanctions, RPC failures, captchas, anti-bot protection, changes in project conditions, third-party errors, and any external factors."
+      },
+      "item3": {
+        "number": "4.3",
+        "text": "The Participant uses scripts at their own risk and independently makes decisions about participation in activities."
+      }
+    },
+    "section5": {
+      "title": "SUBSCRIPTION, PAYMENT, RENEWAL",
+      "item1": {
+        "number": "5.1",
+        "text": "Access is provided for the duration of the paid subscription."
+      },
+      "item2": {
+        "number": "5.2",
+        "text": "If the Client does not pay for renewal within 5 (five) days after the subscription ends — the subscription \"expires\"."
+      },
+      "item3": {
+        "number": "5.3",
+        "text": "After \"expiration\", repurchase/renewal is processed at the current price at the time of payment, not the previously fixed price."
+      }
+    },
+    "section6": {
+      "title": "REFUNDS",
+      "item1": {
+        "number": "6.1",
+        "text": "Payment is non-refundable."
+      },
+      "item2": {
+        "number": "6.2",
+        "text": "Exceptions are possible only if the Team confirms in writing an exceptional case (at its discretion)."
+      }
+    },
+    "section7": {
+      "title": "CONFIDENTIALITY AND PROHIBITION OF DISTRIBUTION",
+      "item1": {
+        "number": "7.1",
+        "text": "All private scripts, materials, instructions, and any parts thereof are confidential."
+      },
+      "item2": {
+        "number": "7.2",
+        "text": "Strictly prohibited: transfer, sell, publish, \"leak\", forward to third parties, post in open access, create mirrors, grant access to private materials in any way."
+      },
+      "item3": {
+        "number": "7.3",
+        "text": "Any attempt at distribution (including partial) is punishable by removal of the user from the private community without refund."
+      }
+    },
+    "section8": {
+      "title": "BEHAVIOR RULES AND SUPPORT",
+      "item1": {
+        "number": "8.1",
+        "text": "The Team has the right to refuse technical support in case of inappropriate behavior by the Client."
+      },
+      "item2": {
+        "number": "8.2",
+        "text": "The Team has the right to issue a temporary ban or full ban/removal from the community if the Client's behavior is inappropriate towards other participants or the Team."
+      },
+      "item3": {
+        "number": "8.3",
+        "text": "Support is provided only for issues related to scripts/their operation. Questions not related to scripts may be ignored or excluded from support."
+      }
+    },
+    "section9": {
+      "title": "REMOVAL AND TERMINATION OF ACCESS",
+      "item1": {
+        "number": "9.1",
+        "text": "The Team reserves the right to remove a Participant from the private community for violation of these Rules."
+      },
+      "item2": {
+        "number": "9.2",
+        "text": "After removal, access to materials is terminated, payment is not refunded."
+      },
+      "item3": {
+        "number": "9.3",
+        "text": "The Team may introduce additional restrictions (limits, access rules, material delivery format) to protect the project and community."
+      }
+    },
+    "section10": {
+      "title": "RULE CHANGES",
+      "item1": {
+        "number": "10.1",
+        "text": "The Team may update/supplement the Rules."
+      },
+      "item2": {
+        "number": "10.2",
+        "text": "The current version of the Rules is effective from the moment of publication in a pinned message/official post of the community."
+      }
+    },
+    "section11": {
+      "title": "ACCEPTANCE OF TERMS",
+      "item1": {
+        "number": "11.1",
+        "text": "Payment of subscription and/or participation in the private community means full agreement of the Participant with these Rules."
+      }
+    },
+    "section12": {
+      "title": "CONTACT",
+      "item1": {
+        "number": "12.1",
+        "text": "All questions regarding access/support — to the official support channels of AfinaDAO Workshop within the community."
       }
     }
   }
