@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { Fingerprint, Activity, Lock } from 'lucide-react';
 
 interface ReflectiveCardProps {
@@ -34,49 +34,7 @@ const ReflectiveCard = ({
   className = '',
   style = {}
 }: ReflectiveCardProps) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-
-    const startWebcam = async () => {
-      try {
-        // Check if mediaDevices is available
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          console.log('Webcam not available');
-          return;
-        }
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
-          }
-        });
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        // Silently handle permission denied or other errors
-        // Webcam is optional for the card effect
-        console.log('Webcam access not available or denied');
-        if (videoRef.current) {
-          // Hide video element if webcam is not available
-          videoRef.current.style.display = 'none';
-        }
-      }
-    };
-
-    startWebcam();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
+  // Removed webcam access - using static gradient background instead
 
   const baseFrequency = 0.03 / Math.max(0.1, noiseScale);
   const saturation = 1 - Math.max(0, Math.min(1, grayscale));
@@ -146,15 +104,12 @@ const ReflectiveCard = ({
         </defs>
       </svg>
 
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="absolute top-0 left-0 w-full h-full object-cover scale-[1.2] -scale-x-100 z-0 opacity-30 dark:opacity-20 transition-[filter] duration-300"
+      {/* Static gradient background instead of webcam video */}
+      <div 
+        className="absolute top-0 left-0 w-full h-full z-0 opacity-30 dark:opacity-20 transition-opacity duration-300"
         style={{
-          filter:
-            `saturate(var(--saturation, 0)) contrast(120%) brightness(120%) blur(var(--blur-strength, 12px)) url(#metallic-displacement)`
+          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(147, 51, 234, 0.3) 50%, rgba(99, 102, 241, 0.3) 100%)',
+          filter: `blur(var(--blur-strength, 12px))`
         }}
       />
 

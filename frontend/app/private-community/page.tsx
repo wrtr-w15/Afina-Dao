@@ -263,7 +263,7 @@ export default function PrivateCommunityPage() {
                               {getPricingForPeriod(3) && calculateSavings(3, getPricingForPeriod(3)!.monthlyPrice) > 0 && (
                                 <div className="flex items-center gap-1 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-amber-500 dark:border-amber-400 shadow-2xl">
                                   <Sparkles size={12} className="text-amber-600 dark:text-amber-400" />
-                                  <span className="text-amber-700 dark:text-amber-300 font-black">Экономия ${formatPrice(calculateSavings(3, getPricingForPeriod(3)!.monthlyPrice))}</span>
+                                  <span className="text-amber-700 dark:text-amber-300 font-black">{t('pricing.savingsLabel')} ${formatPrice(calculateSavings(3, getPricingForPeriod(3)!.monthlyPrice))}</span>
                                 </div>
                               )}
                             </div>
@@ -343,7 +343,7 @@ export default function PrivateCommunityPage() {
                               {getPricingForPeriod(6) && calculateSavings(6, getPricingForPeriod(6)!.monthlyPrice) > 0 && (
                                 <div className="flex items-center gap-1 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-indigo-500 dark:border-indigo-400 shadow-2xl">
                                   <Sparkles size={12} className="text-indigo-600 dark:text-indigo-400" />
-                                  <span className="text-indigo-700 dark:text-indigo-300 font-black">Экономия ${formatPrice(calculateSavings(6, getPricingForPeriod(6)!.monthlyPrice))}</span>
+                                  <span className="text-indigo-700 dark:text-indigo-300 font-black">{t('pricing.savingsLabel')} ${formatPrice(calculateSavings(6, getPricingForPeriod(6)!.monthlyPrice))}</span>
                                 </div>
                               )}
                             </div>

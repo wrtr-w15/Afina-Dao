@@ -248,6 +248,7 @@
     "pricing": {
       "title": "Choose Your Plan",
       "subscription": "Subscription",
+      "savingsLabel": "Save",
       "period1": {
         "badge": "1 month",
         "title": "1 Month Subscription",

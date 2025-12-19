@@ -248,6 +248,7 @@
     "pricing": {
       "title": "Выберите подписку",
       "subscription": "Subscription",
+      "savingsLabel": "Экономия",
       "period1": {
         "badge": "1 месяц",
         "title": "Подписка на 1 месяц",
