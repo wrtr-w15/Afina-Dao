@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '../../../lib/database';
+import crypto from 'crypto';
+import { getConnection } from '../../../lib/database';
 import { Project, CreateProjectData, ProjectBlock, ProjectLink } from '../../../types/project';
 
 // GET /api/projects - получить все проекты
 export async function GET() {
+  const connection = await getConnection();
   try {
-    const connection = await mysql.createConnection(dbConfig);
     
     // Получаем все проекты
     const [projects] = await connection.execute(`
@@ -41,17 +41,18 @@ export async function GET() {
       };
     }));
 
-    await connection.end();
-
     return NextResponse.json(projectsWithTranslations);
   } catch (error) {
     console.error('Error fetching projects:', error);
     return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
 // POST /api/projects - создать новый проект
 export async function POST(request: NextRequest) {
+  let connection;
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
       ? data.status 
       : 'draft';
     
-    const connection = await mysql.createConnection(dbConfig);
+    connection = await getConnection();
     
     const projectId = crypto.randomUUID();
     
@@ -158,8 +159,6 @@ export async function POST(request: NextRequest) {
     }
     }
 
-    await connection.end();
-
     // Сигнализируем об обновлении данных (для очистки кэша на клиенте)
     return NextResponse.json({ 
       id: projectId, 
@@ -182,5 +181,9 @@ export async function POST(request: NextRequest) {
     
     console.error('Returning error response:', errorDetails);
     return NextResponse.json(errorDetails, { status: 500 });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 }

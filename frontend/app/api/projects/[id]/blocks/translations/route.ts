@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/database';
+import crypto from 'crypto';
+import { getConnection } from '@/lib/database';
 import { validateUUIDParam, applyRateLimit, logSuspiciousActivity } from '@/lib/security-middleware';
 import { validateContentBlock } from '@/lib/validation';
 
@@ -50,9 +50,9 @@ export async function POST(
       }
     }
     
-    const connection = await mysql.createConnection(dbConfig);
-    
-    // Для каждого блока сохраняем переводы
+    const connection = await getConnection();
+    try {
+      // Для каждого блока сохраняем переводы
     for (const block of data.blocks) {
       let blockId = block.id;
       
@@ -154,16 +154,23 @@ export async function POST(
       }
     }
     
-    await connection.end();
-    
-    console.log('✅ All block translations saved successfully');
-    
-    return NextResponse.json({ 
-      message: 'Block translations saved successfully',
-      blocksProcessed: data.blocks.length
-    });
+      console.log('✅ All block translations saved successfully');
+      
+      return NextResponse.json({ 
+        message: 'Block translations saved successfully',
+        blocksProcessed: data.blocks.length
+      });
+    } catch (error) {
+      console.error('Error saving block translations:', error);
+      return NextResponse.json({ 
+        error: 'Failed to save block translations',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, { status: 500 });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
-    console.error('Error saving block translations:', error);
+    console.error('Error in POST handler:', error);
     return NextResponse.json({ 
       error: 'Failed to save block translations',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -176,9 +183,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const connection = await getConnection();
   try {
     const { id: projectId } = await params;
-    const connection = await mysql.createConnection(dbConfig);
     
     // Получаем все блоки проекта
     const [blocks] = await connection.execute(`
@@ -213,14 +220,14 @@ export async function GET(
       };
     }));
     
-    await connection.end();
-    
     return NextResponse.json({ blocks: blocksWithTranslations });
   } catch (error) {
     console.error('Error fetching block translations:', error);
     return NextResponse.json({ 
       error: 'Failed to fetch block translations' 
     }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 

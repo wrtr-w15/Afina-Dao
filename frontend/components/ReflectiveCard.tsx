@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, memo } from 'react';
 import { Fingerprint, Activity, Lock } from 'lucide-react';
 
 interface ReflectiveCardProps {
@@ -19,7 +19,7 @@ interface ReflectiveCardProps {
   style?: React.CSSProperties;
 }
 
-const ReflectiveCard = ({
+const ReflectiveCard = memo(({
   children,
   blurStrength = 12,
   color = 'white',
@@ -109,7 +109,9 @@ const ReflectiveCard = ({
         className="absolute top-0 left-0 w-full h-full z-0 opacity-30 dark:opacity-20 transition-opacity duration-300"
         style={{
           background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(147, 51, 234, 0.3) 50%, rgba(99, 102, 241, 0.3) 100%)',
-          filter: `blur(var(--blur-strength, 12px))`
+          filter: `blur(var(--blur-strength, 12px))`,
+          willChange: 'opacity',
+          transform: 'translateZ(0)' // GPU acceleration
         }}
       />
 
@@ -153,7 +155,9 @@ const ReflectiveCard = ({
       )}
     </div>
   );
-};
+});
+
+ReflectiveCard.displayName = 'ReflectiveCard';
 
 export default ReflectiveCard;
 

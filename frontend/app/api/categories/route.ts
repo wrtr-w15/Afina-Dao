@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '../../../lib/database';
+import { getConnection } from '../../../lib/database';
 import { Category, CreateCategoryData } from '../../../types/category';
 
 // GET /api/categories - получить все категории
 export async function GET() {
-  let connection;
+  const connection = await getConnection();
   try {
-    connection = await mysql.createConnection(dbConfig);
     
     const [categories] = await connection.execute(`
       SELECT * FROM categories 
       ORDER BY isActive DESC, sortOrder ASC, name ASC
     `);
-
-    await connection.end();
 
     // Преобразуем данные из базы в формат фронтенда
     // Структура таблицы использует camelCase
@@ -33,18 +29,18 @@ export async function GET() {
     return NextResponse.json(formattedCategories);
   } catch (error) {
     console.error('Error fetching categories:', error);
-    if (connection) {
-      await connection.end().catch(() => {});
-    }
     return NextResponse.json({ 
       error: 'Failed to fetch categories',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
 // POST /api/categories - создать новую категорию
 export async function POST(request: NextRequest) {
+  let connection;
   try {
     // Проверка аутентификации администратора
     const { checkAdminAuth } = await import('@/lib/security-middleware');
@@ -52,7 +48,7 @@ export async function POST(request: NextRequest) {
     if (authResult) return authResult;
 
     const data: CreateCategoryData = await request.json();
-    const connection = await mysql.createConnection(dbConfig);
+    connection = await getConnection();
     
     // Проверяем, что название уникально
     const [existing] = await connection.execute(
@@ -61,7 +57,7 @@ export async function POST(request: NextRequest) {
     );
     
     if ((existing as any[]).length > 0) {
-      await connection.end();
+      connection.release();
       return NextResponse.json({ error: 'Category with this name already exists' }, { status: 400 });
     }
 
@@ -81,8 +77,6 @@ export async function POST(request: NextRequest) {
 
     const categoryId = (result as any).insertId;
 
-    await connection.end();
-
     return NextResponse.json({ 
       id: categoryId,
       message: 'Category created successfully' 
@@ -90,5 +84,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating category:', error);
     return NextResponse.json({ error: 'Failed to create category' }, { status: 500 });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 }

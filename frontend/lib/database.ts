@@ -1,4 +1,5 @@
 // Конфигурация базы данных MySQL
+import mysql from 'mysql2/promise';
 
 export const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -11,6 +12,23 @@ export const dbConfig = {
   ssl: false as any,
   // Убираем устаревшие опции
 };
+
+// Connection Pool для эффективного управления соединениями
+// Предотвращает утечки соединений и оптимизирует производительность
+export const pool = mysql.createPool({
+  ...dbConfig,
+  waitForConnections: true,
+  connectionLimit: 10, // Максимум 10 одновременных соединений
+  queueLimit: 0, // Без ограничения очереди
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+});
+
+// Хелпер для безопасного получения соединения из pool
+// Используйте этот метод вместо createConnection
+export async function getConnection() {
+  return await pool.getConnection();
+}
 
 // Типы для работы с базой данных
 export interface DatabaseProject {

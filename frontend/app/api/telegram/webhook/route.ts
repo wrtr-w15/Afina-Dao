@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/database';
+import { getConnection } from '@/lib/database';
 import { sendTelegramMessage, answerCallbackQuery } from '@/lib/telegram';
 import { applyRateLimit } from '@/lib/security-middleware';
 import crypto from 'crypto';
@@ -67,10 +66,8 @@ export async function POST(request: NextRequest) {
         }
         
         // Обновляем статус в базе данных
-        let connection;
+        const connection = await getConnection();
         try {
-          connection = await mysql.createConnection(dbConfig);
-          
           // Сначала проверяем, существует ли запрос
           const [checkRows] = await connection.execute(
             'SELECT id, status FROM auth_sessions WHERE id = ?',
@@ -79,7 +76,6 @@ export async function POST(request: NextRequest) {
           
           if (!Array.isArray(checkRows) || checkRows.length === 0) {
             console.warn(`⚠️ Request ${requestId} not found in DB before update`);
-            await connection.end();
             if (callbackQueryId) {
               await answerCallbackQuery(callbackQueryId, '❌ Request not found or expired').catch(err => {
                 console.error('Error answering callback:', err);
@@ -97,7 +93,6 @@ export async function POST(request: NextRequest) {
             'UPDATE auth_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
             [approved ? 'approved' : 'denied', requestId]
           );
-          await connection.end();
           
           const affectedRows = (result as any).affectedRows;
           console.log(`📝 DB Update result: ${requestId} - ${approved ? 'approved' : 'denied'} (affected rows: ${affectedRows})`);
@@ -128,12 +123,11 @@ export async function POST(request: NextRequest) {
           }
         } catch (dbError) {
           console.error('❌ Database error updating auth session:', dbError);
-          if (connection) {
-            await connection.end().catch(() => {});
-          }
           if (callbackQueryId) {
             await answerCallbackQuery(callbackQueryId, '❌ Database error').catch(() => {});
           }
+        } finally {
+          connection.release();
         }
       } else {
         console.warn('⚠️ Callback data does not start with approve_ or deny_:', callbackData);

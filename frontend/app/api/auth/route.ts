@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/database';
+import { getConnection } from '@/lib/database';
 import { sendTelegramMessage } from '@/lib/telegram';
 import { encryptSessionData, decryptSessionData, constantTimeCompare } from '@/lib/crypto-utils';
 import { applyRateLimit } from '@/lib/security-middleware';
@@ -43,9 +42,8 @@ export async function POST(request: NextRequest) {
     const requestId = crypto.randomUUID();
     
     // Сохраняем запрос в базу данных
-    let connection;
+    const connection = await getConnection();
     try {
-      connection = await mysql.createConnection(dbConfig);
       const [result] = await connection.execute(
         'INSERT INTO auth_sessions (id, ip, user_agent, status) VALUES (?, ?, ?, ?)',
         [requestId, ip, userAgent, 'pending']
@@ -61,20 +59,16 @@ export async function POST(request: NextRequest) {
       
       if (affectedRows === 0) {
         console.error('❌ Failed to insert auth session into database - affectedRows is 0');
-        await connection.end();
         return NextResponse.json({ error: 'Failed to create login request' }, { status: 500 });
       }
-      
-      await connection.end();
     } catch (dbError) {
       console.error('❌ Database error creating auth session:', dbError);
-      if (connection) {
-        await connection.end().catch(() => {});
-      }
       return NextResponse.json({ 
         error: 'Database error',
         details: dbError instanceof Error ? dbError.message : 'Unknown error'
       }, { status: 500 });
+    } finally {
+      connection.release();
     }
 
     // Отправляем сообщение в Telegram
@@ -109,77 +103,83 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем статус из базы данных
-    const connection = await mysql.createConnection(dbConfig);
-    const [rows] = await connection.execute(
-      'SELECT * FROM auth_sessions WHERE id = ?',
-      [requestId]
-    );
-    await connection.end();
+    const connection = await getConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT * FROM auth_sessions WHERE id = ?',
+        [requestId]
+      );
 
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ 
-        status: 'expired',
-        error: 'Request not found or expired',
-        success: false
-      }, { status: 410 });
-    }
-
-    const session = rows[0] as any;
-
-    // Проверяем, не истек ли запрос (5 минут)
-    const createdAt = new Date(session.created_at).getTime();
-    if (Date.now() - createdAt > 5 * 60 * 1000) {
-      return NextResponse.json({ 
-        status: 'expired',
-        error: 'Request not found or expired',
-        success: false
-      }, { status: 410 });
-    }
-
-    if (session.status === 'approved') {
-      // Создаем сессию и устанавливаем cookie
-      const sessionToken = crypto.randomBytes(32).toString('hex');
-      const sessionData = {
-        token: sessionToken,
-        timestamp: Date.now(),
-        ip: session.ip,
-        userAgent: session.user_agent
-      };
-
-      // Шифруем данные сессии с использованием безопасного метода
-      if (!SESSION_SECRET) {
-        console.error('SESSION_SECRET not configured');
-        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return NextResponse.json({ 
+          status: 'expired',
+          error: 'Request not found or expired',
+          success: false
+        }, { status: 410 });
       }
-      
-      const encryptedData = encryptSessionData(sessionData, SESSION_SECRET);
 
-      // Устанавливаем cookie
-      const cookieStore = await cookies();
-      cookieStore.set('admin-session', encryptedData, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 // 24 часа
-      });
+      const session = rows[0] as any;
 
-      return NextResponse.json({ 
-        success: true,
-        message: 'Login successful'
-      });
-    } else if (session.status === 'denied') {
-      return NextResponse.json({ 
-        success: false,
-        message: 'Access denied'
-      });
-    } else {
-      return NextResponse.json({ 
-        status: 'pending',
-        message: 'Waiting for confirmation...'
-      });
+      // Проверяем, не истек ли запрос (5 минут)
+      const createdAt = new Date(session.created_at).getTime();
+      if (Date.now() - createdAt > 5 * 60 * 1000) {
+        return NextResponse.json({ 
+          status: 'expired',
+          error: 'Request not found or expired',
+          success: false
+        }, { status: 410 });
+      }
+
+      if (session.status === 'approved') {
+        // Создаем сессию и устанавливаем cookie
+        const sessionToken = crypto.randomBytes(32).toString('hex');
+        const sessionData = {
+          token: sessionToken,
+          timestamp: Date.now(),
+          ip: session.ip,
+          userAgent: session.user_agent
+        };
+
+        // Шифруем данные сессии с использованием безопасного метода
+        if (!SESSION_SECRET) {
+          console.error('SESSION_SECRET not configured');
+          return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+        }
+        
+        const encryptedData = encryptSessionData(sessionData, SESSION_SECRET);
+
+        // Устанавливаем cookie
+        const cookieStore = await cookies();
+        cookieStore.set('admin-session', encryptedData, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 24 * 60 * 60 // 24 часа
+        });
+
+        return NextResponse.json({ 
+          success: true,
+          message: 'Login successful'
+        });
+      } else if (session.status === 'denied') {
+        return NextResponse.json({ 
+          success: false,
+          message: 'Access denied'
+        });
+      } else {
+        return NextResponse.json({ 
+          status: 'pending',
+          message: 'Waiting for confirmation...'
+        });
+      }
+    } catch (error) {
+      console.error('Status check error:', error);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    } finally {
+      connection.release();
     }
   } catch (error) {
-    console.error('Status check error:', error);
+    console.error('Error in GET handler:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

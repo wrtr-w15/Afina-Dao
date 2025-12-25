@@ -24,8 +24,11 @@ export default function GhostCursor({
 
     const container = containerRef.current;
     const ghost = ghostRef.current;
+    let rafId: number | null = null;
+    let lastUpdate = 0;
+    const throttleMs = 16; // ~60fps
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const updatePosition = (e: MouseEvent) => {
       if (!container || !ghost) return;
       
       const rect = container.getBoundingClientRect();
@@ -39,6 +42,23 @@ export default function GhostCursor({
       const offsetY = (y - centerY) * intensity;
 
       ghost.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const now = Date.now();
+      if (now - lastUpdate < throttleMs) {
+        if (rafId === null) {
+          rafId = requestAnimationFrame(() => {
+            updatePosition(e);
+            lastUpdate = Date.now();
+            rafId = null;
+          });
+        }
+        return;
+      }
+      
+      updatePosition(e);
+      lastUpdate = now;
     };
 
     const handleMouseEnter = () => {
@@ -56,11 +76,14 @@ export default function GhostCursor({
       }
     };
 
-    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('mousemove', handleMouseMove, { passive: true });
     container.addEventListener('mouseenter', handleMouseEnter);
     container.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       container.removeEventListener('mousemove', handleMouseMove);
       container.removeEventListener('mouseenter', handleMouseEnter);
       container.removeEventListener('mouseleave', handleMouseLeave);

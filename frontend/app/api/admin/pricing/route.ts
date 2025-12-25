@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '../../../../lib/database';
+import crypto from 'crypto';
+import { getConnection } from '../../../../lib/database';
 import { PricingSettings, CreatePricingSettingsData, UpdatePricingSettingsData } from '../../../../types/pricing';
 
 // OPTIONS /api/admin/pricing - CORS preflight
@@ -21,16 +21,13 @@ export async function OPTIONS(request: NextRequest) {
 
 // GET /api/admin/pricing - получить настройки цен
 export async function GET(request: NextRequest) {
+  const connection = await getConnection();
   try {
-    const connection = await mysql.createConnection(dbConfig);
-    
     const [rows] = await connection.execute(`
       SELECT * FROM pricing_settings 
       ORDER BY created_at DESC 
       LIMIT 1
     `);
-
-    await connection.end();
 
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'No pricing settings found' }, { status: 404 });
@@ -63,6 +60,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching pricing settings:', error);
     return NextResponse.json({ error: 'Failed to fetch pricing settings' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
@@ -76,25 +75,29 @@ export async function POST(request: NextRequest) {
 
     const data: CreatePricingSettingsData = await request.json();
     
-    const connection = await mysql.createConnection(dbConfig);
-    
-    const settingsId = crypto.randomUUID();
-    
-    await connection.execute(`
-      INSERT INTO pricing_settings (id, installation_price, monthly_price_per_account, discount_multipliers)
-      VALUES (?, ?, ?, ?)
-    `, [
-      settingsId,
-      data.installationPrice,
-      data.monthlyPricePerAccount,
-      JSON.stringify(data.discountMultipliers)
-    ]);
+    const connection = await getConnection();
+    try {
+      const settingsId = crypto.randomUUID();
+      
+      await connection.execute(`
+        INSERT INTO pricing_settings (id, installation_price, monthly_price_per_account, discount_multipliers)
+        VALUES (?, ?, ?, ?)
+      `, [
+        settingsId,
+        data.installationPrice,
+        data.monthlyPricePerAccount,
+        JSON.stringify(data.discountMultipliers)
+      ]);
 
-    await connection.end();
-
-    return NextResponse.json({ id: settingsId, message: 'Pricing settings created successfully' });
+      return NextResponse.json({ id: settingsId, message: 'Pricing settings created successfully' });
+    } catch (error) {
+      console.error('Error creating pricing settings:', error);
+      return NextResponse.json({ error: 'Failed to create pricing settings' }, { status: 500 });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
-    console.error('Error creating pricing settings:', error);
+    console.error('Error in POST handler:', error);
     return NextResponse.json({ error: 'Failed to create pricing settings' }, { status: 500 });
   }
 }
@@ -109,42 +112,45 @@ export async function PUT(request: NextRequest) {
 
     const data: UpdatePricingSettingsData = await request.json();
     
-    const connection = await mysql.createConnection(dbConfig);
-    
-    // Получаем текущие настройки
-    const [rows] = await connection.execute(`
-      SELECT * FROM pricing_settings 
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `);
+    const connection = await getConnection();
+    try {
+      // Получаем текущие настройки
+      const [rows] = await connection.execute(`
+        SELECT * FROM pricing_settings 
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `);
 
-    if (!Array.isArray(rows) || rows.length === 0) {
-      await connection.end();
-      return NextResponse.json({ error: 'No pricing settings found to update' }, { status: 404 });
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return NextResponse.json({ error: 'No pricing settings found to update' }, { status: 404 });
+      }
+
+      const currentSettings = rows[0] as any;
+      
+      // Обновляем настройки
+      await connection.execute(`
+        UPDATE pricing_settings 
+        SET installation_price = ?, 
+            monthly_price_per_account = ?, 
+            discount_multipliers = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [
+        data.installationPrice,
+        data.monthlyPricePerAccount,
+        JSON.stringify(data.discountMultipliers),
+        currentSettings.id
+      ]);
+
+      return NextResponse.json({ message: 'Pricing settings updated successfully' });
+    } catch (error) {
+      console.error('Error updating pricing settings:', error);
+      return NextResponse.json({ error: 'Failed to update pricing settings' }, { status: 500 });
+    } finally {
+      connection.release();
     }
-
-    const currentSettings = rows[0] as any;
-    
-    // Обновляем настройки
-    await connection.execute(`
-      UPDATE pricing_settings 
-      SET installation_price = ?, 
-          monthly_price_per_account = ?, 
-          discount_multipliers = ?,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [
-      data.installationPrice,
-      data.monthlyPricePerAccount,
-      JSON.stringify(data.discountMultipliers),
-      currentSettings.id
-    ]);
-
-    await connection.end();
-
-    return NextResponse.json({ message: 'Pricing settings updated successfully' });
   } catch (error) {
-    console.error('Error updating pricing settings:', error);
+    console.error('Error in PUT handler:', error);
     return NextResponse.json({ error: 'Failed to update pricing settings' }, { status: 500 });
   }
 }

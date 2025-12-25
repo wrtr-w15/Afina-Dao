@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Layout from '@/components/LayoutComponent';
 import { Card } from '@/components/ui/Card';
 import { Users, CheckCircle2, MessageCircle, ExternalLink, Sparkles, Activity, Fingerprint } from 'lucide-react';
@@ -51,15 +51,15 @@ export default function PrivateCommunityPage() {
     }
   };
 
-  const getPricingForPeriod = (periodMonths: number) => {
+  const getPricingForPeriod = useCallback((periodMonths: number) => {
     return pricing.find(p => p.periodMonths === periodMonths);
-  };
+  }, [pricing]);
 
-  const calculateTotal = (periodMonths: number, monthlyPrice: number) => {
+  const calculateTotal = useCallback((periodMonths: number, monthlyPrice: number) => {
     return periodMonths * monthlyPrice;
-  };
+  }, []);
 
-  const calculateSavings = (periodMonths: number, monthlyPrice: number) => {
+  const calculateSavings = useCallback((periodMonths: number, monthlyPrice: number) => {
     if (periodMonths === 1) return 0;
     
     const basePrice = pricing.find(p => p.periodMonths === 1)?.monthlyPrice || monthlyPrice;
@@ -67,11 +67,11 @@ export default function PrivateCommunityPage() {
     const totalCurrent = monthlyPrice * periodMonths;
     
     return totalBase - totalCurrent;
-  };
+  }, [pricing]);
 
-  const formatPrice = (price: number) => {
+  const formatPrice = useCallback((price: number) => {
     return price.toFixed(0);
-  };
+  }, []);
   
   return (
     <Layout title={t('title')} description={t('description')}>

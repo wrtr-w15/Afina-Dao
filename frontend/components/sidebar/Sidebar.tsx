@@ -13,36 +13,58 @@ export default function Sidebar() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    const CACHE_KEY = 'sidebar_projects';
+    const CACHE_TIMESTAMP_KEY = 'sidebar_projects_timestamp';
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 минут
+
     const loadProjects = async () => {
       try {
-        // Проверяем кэш
-        const cachedData = typeof window !== 'undefined' ? localStorage.getItem('sidebar_projects') : null;
-        if (cachedData) {
-          try {
-            const cachedProjects = JSON.parse(cachedData);
-            if (Array.isArray(cachedProjects) && cachedProjects.length > 0) {
-              setProjects(cachedProjects);
-              setIsLoading(false);
+        // Проверяем кэш с временной меткой
+        if (typeof window !== 'undefined') {
+          const cachedData = localStorage.getItem(CACHE_KEY);
+          const cachedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+          
+          if (cachedData && cachedTimestamp) {
+            const timestamp = parseInt(cachedTimestamp, 10);
+            const now = Date.now();
+            
+            // Если кэш свежий (меньше 5 минут), используем его
+            if (now - timestamp < CACHE_DURATION) {
+              try {
+                const cachedProjects = JSON.parse(cachedData);
+                if (Array.isArray(cachedProjects) && cachedProjects.length > 0 && isMounted) {
+                  setProjects(cachedProjects);
+                  setIsLoading(false);
+                  return; // Не загружаем заново, если кэш свежий
+                }
+              } catch (e) {
+                console.error('Failed to parse cached projects:', e);
+              }
             }
-          } catch (e) {
-            console.error('Failed to parse cached projects:', e);
           }
         }
 
-        // Всегда загружаем свежие данные
+        // Загружаем свежие данные только если кэш устарел или отсутствует
         const allProjects = await getProjects();
         // Фильтруем только активные проекты для пользовательского сайдбара
         const activeProjects = allProjects.filter(project => project.status === 'active');
-        setProjects(activeProjects);
-        setIsLoading(false);
         
-        // Кэшируем проекты
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('sidebar_projects', JSON.stringify(activeProjects));
+        if (isMounted) {
+          setProjects(activeProjects);
+          setIsLoading(false);
+          
+          // Кэшируем проекты с временной меткой
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(activeProjects));
+            localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+          }
         }
       } catch (error) {
         console.error('Error loading projects:', error);
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -58,6 +80,7 @@ export default function Sidebar() {
     }
 
     return () => {
+      isMounted = false;
       if (typeof window !== 'undefined') {
         window.removeEventListener('sidebarCacheInvalidated', handleCacheInvalidation);
       }

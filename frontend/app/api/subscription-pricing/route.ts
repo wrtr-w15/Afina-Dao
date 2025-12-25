@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/database';
+import crypto from 'crypto';
+import { getConnection } from '@/lib/database';
 import { SubscriptionPricing, UpdateSubscriptionPricingData } from '@/types/pricing';
 
 // GET /api/subscription-pricing - получить все цены подписок
 export async function GET(request: NextRequest) {
+  const connection = await getConnection();
   try {
-    const connection = await mysql.createConnection(dbConfig);
-    
     const [rows] = await connection.execute(`
       SELECT * FROM subscription_pricing 
       ORDER BY period_months ASC
     `);
-
-    await connection.end();
 
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'No subscription pricing found' }, { status: 404 });
@@ -31,6 +28,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching subscription pricing:', error);
     return NextResponse.json({ error: 'Failed to fetch subscription pricing' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
@@ -48,16 +47,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid data format' }, { status: 400 });
     }
 
-    const connection = await mysql.createConnection(dbConfig);
-    
-    // Обновляем каждую цену
-    for (const item of data) {
-      if (!item.periodMonths || !item.monthlyPrice || item.monthlyPrice <= 0) {
-        await connection.end();
-        return NextResponse.json({ 
-          error: `Invalid data for period ${item.periodMonths}` 
-        }, { status: 400 });
-      }
+    const connection = await getConnection();
+    try {
+      // Обновляем каждую цену
+      for (const item of data) {
+        if (!item.periodMonths || !item.monthlyPrice || item.monthlyPrice <= 0) {
+          return NextResponse.json({ 
+            error: `Invalid data for period ${item.periodMonths}` 
+          }, { status: 400 });
+        }
 
       // Проверяем, существует ли запись
       const [existing] = await connection.execute(
@@ -84,11 +82,15 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    await connection.end();
-
-    return NextResponse.json({ message: 'Subscription pricing updated successfully' });
+      return NextResponse.json({ message: 'Subscription pricing updated successfully' });
+    } catch (error) {
+      console.error('Error updating subscription pricing:', error);
+      return NextResponse.json({ error: 'Failed to update subscription pricing' }, { status: 500 });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
-    console.error('Error updating subscription pricing:', error);
+    console.error('Error in PUT handler:', error);
     return NextResponse.json({ error: 'Failed to update subscription pricing' }, { status: 500 });
   }
 }

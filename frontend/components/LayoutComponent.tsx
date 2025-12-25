@@ -21,8 +21,10 @@ export default function Layout({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Определяем размер экрана
+  // Определяем размер экрана с debouncing
   useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    
     const checkScreenSize = () => {
       const isMobileSize = window.innerWidth < 1024; // lg breakpoint
       setIsMobile(isMobileSize);
@@ -33,9 +35,17 @@ export default function Layout({
       }
     };
 
+    const handleResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(checkScreenSize, 150); // Debounce 150ms
+    };
+
     checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => {
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   const handleSidebarToggle = () => {

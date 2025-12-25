@@ -89,10 +89,27 @@ export default function Header({
   }, [searchQuery]);
 
   const loadMobileProjects = async () => {
+    // Проверяем кэш
+    if (typeof window !== 'undefined') {
+      const cachedData = localStorage.getItem('sidebar_projects');
+      if (cachedData) {
+        try {
+          const cachedProjects = JSON.parse(cachedData);
+          if (Array.isArray(cachedProjects) && cachedProjects.length > 0) {
+            setMobileProjects(cachedProjects);
+            return; // Используем кэш, не загружаем заново
+          }
+        } catch (e) {
+          // Игнорируем ошибки парсинга
+        }
+      }
+    }
+
     setIsMobileLoading(true);
     try {
       const projects = await getProjects();
-      setMobileProjects(projects.filter(project => project.status === 'active'));
+      const activeProjects = projects.filter(project => project.status === 'active');
+      setMobileProjects(activeProjects);
     } catch (error) {
       console.error('Error loading mobile projects:', error);
     } finally {
@@ -143,25 +160,12 @@ export default function Header({
     console.log('✓ Navigating to:', result.url);
   };
 
-  // Загрузка проектов для мобильного меню
+  // Загрузка проектов для мобильного меню (используем общую функцию)
   useEffect(() => {
-    const loadMobileProjects = async () => {
-      if (isMobileMenuOpen && mobileProjects.length === 0) {
-        setIsMobileLoading(true);
-        try {
-          const projects = await getProjects();
-          const activeProjects = projects.filter(project => project.status === 'active');
-          setMobileProjects(activeProjects);
-        } catch (error) {
-          console.error('Error loading mobile projects:', error);
-        } finally {
-          setIsMobileLoading(false);
-        }
-      }
-    };
-
-    loadMobileProjects();
-  }, [isMobileMenuOpen, mobileProjects.length]);
+    if (isMobileMenuOpen && mobileProjects.length === 0) {
+      loadMobileProjects();
+    }
+  }, [isMobileMenuOpen]); // Убрали mobileProjects.length чтобы избежать лишних вызовов
 
 
   const isActive = (path: string) => {
