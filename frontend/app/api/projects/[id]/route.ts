@@ -123,63 +123,62 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    // Проверка аутентификации администратора
-    const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth(request);
-    if (authResult) return authResult;
+  // Проверка аутентификации администратора
+  const { checkAdminAuth } = await import('@/lib/security-middleware');
+  const authResult = await checkAdminAuth(request);
+  if (authResult) return authResult;
 
-    // Rate limiting (более строгий для изменяющих операций)
-    const rateLimitResult = applyRateLimit(request, 30, 60000); // 30 запросов в минуту
-    if (rateLimitResult) return rateLimitResult;
-    
-    const { id } = await params;
-    
-    // Валидация UUID
-    const uuidValidation = validateUUIDParam(id, 'project ID');
-    if (uuidValidation) {
-      logSuspiciousActivity(request, 'Invalid project ID format in PUT', { id });
-      return uuidValidation;
+  // Rate limiting (более строгий для изменяющих операций)
+  const rateLimitResult = applyRateLimit(request, 30, 60000); // 30 запросов в минуту
+  if (rateLimitResult) return rateLimitResult;
+  
+  const { id } = await params;
+  
+  // Валидация UUID
+  const uuidValidation = validateUUIDParam(id, 'project ID');
+  if (uuidValidation) {
+    logSuspiciousActivity(request, 'Invalid project ID format in PUT', { id });
+    return uuidValidation;
+  }
+  
+  const data = await request.json();
+  
+  // Валидация входных данных
+  if (data.sidebarName) {
+    const nameValidation = validateProjectName(data.sidebarName);
+    if (!nameValidation.valid) {
+      return NextResponse.json({ error: nameValidation.error }, { status: 400 });
     }
-    
-    const data = await request.json();
-    
-    // Валидация входных данных
-    if (data.sidebarName) {
-      const nameValidation = validateProjectName(data.sidebarName);
-      if (!nameValidation.valid) {
-        return NextResponse.json({ error: nameValidation.error }, { status: 400 });
+  }
+  
+  if (data.status) {
+    const statusValidation = validateProjectStatus(data.status);
+    if (!statusValidation.valid) {
+      logSuspiciousActivity(request, 'Invalid project status', { status: data.status });
+      return NextResponse.json({ error: statusValidation.error }, { status: 400 });
+    }
+  }
+  
+  if (data.image) {
+    const imageValidation = validateImageURL(data.image);
+    if (!imageValidation.valid) {
+      return NextResponse.json({ error: imageValidation.error }, { status: 400 });
+    }
+  }
+  
+  // Валидация переводов
+  if (data.translations && Array.isArray(data.translations)) {
+    for (const translation of data.translations) {
+      const translationValidation = validateProjectTranslation(translation);
+      if (!translationValidation.valid) {
+        return NextResponse.json({ error: `Translation error: ${translationValidation.error}` }, { status: 400 });
       }
     }
-    
-    if (data.status) {
-      const statusValidation = validateProjectStatus(data.status);
-      if (!statusValidation.valid) {
-        logSuspiciousActivity(request, 'Invalid project status', { status: data.status });
-        return NextResponse.json({ error: statusValidation.error }, { status: 400 });
-      }
-    }
-    
-    if (data.image) {
-      const imageValidation = validateImageURL(data.image);
-      if (!imageValidation.valid) {
-        return NextResponse.json({ error: imageValidation.error }, { status: 400 });
-      }
-    }
-    
-    // Валидация переводов
-    if (data.translations && Array.isArray(data.translations)) {
-      for (const translation of data.translations) {
-        const translationValidation = validateProjectTranslation(translation);
-        if (!translationValidation.valid) {
-          return NextResponse.json({ error: `Translation error: ${translationValidation.error}` }, { status: 400 });
-        }
-      }
-    }
-    
-    const connection = await getConnection();
-    try {
-      // Обновляем основную информацию проекта
+  }
+  
+  const connection = await getConnection();
+  try {
+    // Обновляем основную информацию проекта
     await connection.execute(`
       UPDATE projects 
       SET sidebar_name = ?, status = ?, category = ?, 
@@ -216,23 +215,19 @@ export async function PUT(
       }
     }
 
-      // Блоки теперь обновляются через отдельное API /api/projects/[id]/blocks/translations
-      // Здесь обновляем только основную информацию проекта
+    // Блоки теперь обновляются через отдельное API /api/projects/[id]/blocks/translations
+    // Здесь обновляем только основную информацию проекта
 
-      // Сигнализируем об обновлении данных (для очистки кэша на клиенте)
-      return NextResponse.json({ 
-        message: 'Project updated successfully',
-        cacheInvalidated: true 
-      });
-    } catch (error) {
-      console.error('Error updating project:', error);
-      return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });
-    } finally {
-      connection.release();
-    }
+    // Сигнализируем об обновлении данных (для очистки кэша на клиенте)
+    return NextResponse.json({ 
+      message: 'Project updated successfully',
+      cacheInvalidated: true 
+    });
   } catch (error) {
-    console.error('Error in PUT handler:', error);
+    console.error('Error updating project:', error);
     return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
@@ -241,39 +236,34 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Проверка аутентификации администратора
+  const { checkAdminAuth } = await import('@/lib/security-middleware');
+  const authResult = await checkAdminAuth(request);
+  if (authResult) return authResult;
+
+  // Rate limiting (строгий для удаления)
+  const rateLimitResult = applyRateLimit(request, 10, 60000); // 10 запросов в минуту
+  if (rateLimitResult) return rateLimitResult;
+  
+  const { id } = await params;
+  
+  // Валидация UUID
+  const uuidValidation = validateUUIDParam(id, 'project ID');
+  if (uuidValidation) {
+    logSuspiciousActivity(request, 'Invalid project ID format in DELETE', { id });
+    return uuidValidation;
+  }
+  
+  const connection = await getConnection();
   try {
-    // Проверка аутентификации администратора
-    const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth(request);
-    if (authResult) return authResult;
+    // Удаляем проект (каскадное удаление удалит блоки и ссылки)
+    await connection.execute(`DELETE FROM projects WHERE id = ?`, [id]);
 
-    // Rate limiting (строгий для удаления)
-    const rateLimitResult = applyRateLimit(request, 10, 60000); // 10 запросов в минуту
-    if (rateLimitResult) return rateLimitResult;
-    
-    const { id } = await params;
-    
-    // Валидация UUID
-    const uuidValidation = validateUUIDParam(id, 'project ID');
-    if (uuidValidation) {
-      logSuspiciousActivity(request, 'Invalid project ID format in DELETE', { id });
-      return uuidValidation;
-    }
-    
-    const connection = await getConnection();
-    try {
-      // Удаляем проект (каскадное удаление удалит блоки и ссылки)
-      await connection.execute(`DELETE FROM projects WHERE id = ?`, [id]);
-
-      return NextResponse.json({ message: 'Project deleted successfully' });
-    } catch (error) {
-      console.error('Error deleting project:', error);
-      return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });
-    } finally {
-      connection.release();
-    }
+    return NextResponse.json({ message: 'Project deleted successfully' });
   } catch (error) {
-    console.error('Error in DELETE handler:', error);
+    console.error('Error deleting project:', error);
     return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }

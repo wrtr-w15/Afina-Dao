@@ -4,16 +4,15 @@ import { PricingCalculation } from '../../../../types/pricing';
 
 // GET /api/pricing-settings/calculate?projects=5 - рассчитать цену для определенного количества проектов
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const projectCount = parseInt(searchParams.get('projects') || '1');
-    
-    if (isNaN(projectCount) || projectCount < 1) {
-      return NextResponse.json({ error: 'Invalid project count' }, { status: 400 });
-    }
+  const { searchParams } = new URL(request.url);
+  const projectCount = parseInt(searchParams.get('projects') || '1');
+  
+  if (isNaN(projectCount) || projectCount < 1) {
+    return NextResponse.json({ error: 'Invalid project count' }, { status: 400 });
+  }
 
-    const connection = await getConnection();
-    try {
+  const connection = await getConnection();
+  try {
       // Получаем текущие настройки цен
       const [rows] = await connection.execute(`
         SELECT * FROM pricing_settings 
@@ -51,15 +50,11 @@ export async function GET(request: NextRequest) {
         totalPrice
       };
 
-      return NextResponse.json(calculation);
-    } catch (error) {
-      console.error('Error calculating pricing:', error);
-      return NextResponse.json({ error: 'Failed to calculate pricing' }, { status: 500 });
-    } finally {
-      connection.release();
-    }
+    return NextResponse.json(calculation);
   } catch (error) {
-    console.error('Error in GET handler:', error);
+    console.error('Error calculating pricing:', error);
     return NextResponse.json({ error: 'Failed to calculate pricing' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }

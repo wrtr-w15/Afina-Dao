@@ -9,50 +9,49 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    // Проверка аутентификации администратора
-    const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth(request);
-    if (authResult) return authResult;
+  // Проверка аутентификации администратора
+  const { checkAdminAuth } = await import('@/lib/security-middleware');
+  const authResult = await checkAdminAuth(request);
+  if (authResult) return authResult;
 
-    // Rate limiting
-    const rateLimitResult = applyRateLimit(request, 20, 60000); // 20 запросов в минуту
-    if (rateLimitResult) return rateLimitResult;
-    
-    const { id: projectId } = await params;
-    
-    // Валидация UUID проекта
-    const uuidValidation = validateUUIDParam(projectId, 'project ID');
-    if (uuidValidation) {
-      logSuspiciousActivity(request, 'Invalid project ID format in blocks translations', { projectId });
-      return uuidValidation;
+  // Rate limiting
+  const rateLimitResult = applyRateLimit(request, 20, 60000); // 20 запросов в минуту
+  if (rateLimitResult) return rateLimitResult;
+  
+  const { id: projectId } = await params;
+  
+  // Валидация UUID проекта
+  const uuidValidation = validateUUIDParam(projectId, 'project ID');
+  if (uuidValidation) {
+    logSuspiciousActivity(request, 'Invalid project ID format in blocks translations', { projectId });
+    return uuidValidation;
+  }
+  
+  const data = await request.json();
+  
+  console.log('Saving block translations for project:', projectId);
+  console.log('Received data:', JSON.stringify(data, null, 2));
+  
+  // data.blocks должен быть массивом блоков с переводами
+  if (!data.blocks || !Array.isArray(data.blocks)) {
+    return NextResponse.json({ error: 'Invalid data format: blocks must be an array' }, { status: 400 });
+  }
+  
+  // Валидация каждого блока
+  for (let i = 0; i < data.blocks.length; i++) {
+    const block = data.blocks[i];
+    const blockValidation = validateContentBlock(block);
+    if (!blockValidation.valid) {
+      console.error(`Block ${i} validation failed:`, blockValidation.error);
+      return NextResponse.json({ 
+        error: `Block ${i + 1}: ${blockValidation.error}` 
+      }, { status: 400 });
     }
-    
-    const data = await request.json();
-    
-    console.log('Saving block translations for project:', projectId);
-    console.log('Received data:', JSON.stringify(data, null, 2));
-    
-    // data.blocks должен быть массивом блоков с переводами
-    if (!data.blocks || !Array.isArray(data.blocks)) {
-      return NextResponse.json({ error: 'Invalid data format: blocks must be an array' }, { status: 400 });
-    }
-    
-    // Валидация каждого блока
-    for (let i = 0; i < data.blocks.length; i++) {
-      const block = data.blocks[i];
-      const blockValidation = validateContentBlock(block);
-      if (!blockValidation.valid) {
-        console.error(`Block ${i} validation failed:`, blockValidation.error);
-        return NextResponse.json({ 
-          error: `Block ${i + 1}: ${blockValidation.error}` 
-        }, { status: 400 });
-      }
-    }
-    
-    const connection = await getConnection();
-    try {
-      // Для каждого блока сохраняем переводы
+  }
+  
+  const connection = await getConnection();
+  try {
+    // Для каждого блока сохраняем переводы
     for (const block of data.blocks) {
       let blockId = block.id;
       
@@ -154,27 +153,20 @@ export async function POST(
       }
     }
     
-      console.log('✅ All block translations saved successfully');
-      
-      return NextResponse.json({ 
-        message: 'Block translations saved successfully',
-        blocksProcessed: data.blocks.length
-      });
-    } catch (error) {
-      console.error('Error saving block translations:', error);
-      return NextResponse.json({ 
-        error: 'Failed to save block translations',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }, { status: 500 });
-    } finally {
-      connection.release();
-    }
+    console.log('✅ All block translations saved successfully');
+    
+    return NextResponse.json({ 
+      message: 'Block translations saved successfully',
+      blocksProcessed: data.blocks.length
+    });
   } catch (error) {
-    console.error('Error in POST handler:', error);
+    console.error('Error saving block translations:', error);
     return NextResponse.json({ 
       error: 'Failed to save block translations',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 

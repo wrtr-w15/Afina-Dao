@@ -94,93 +94,88 @@ export async function POST(request: NextRequest) {
 
 // GET /api/auth?requestId=xxx - проверка статуса и создание сессии
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const requestId = searchParams.get('requestId');
+  const { searchParams } = new URL(request.url);
+  const requestId = searchParams.get('requestId');
 
-    if (!requestId) {
-      return NextResponse.json({ error: 'Request ID required' }, { status: 400 });
+  if (!requestId) {
+    return NextResponse.json({ error: 'Request ID required' }, { status: 400 });
+  }
+
+  // Получаем статус из базы данных
+  const connection = await getConnection();
+  try {
+    const [rows] = await connection.execute(
+      'SELECT * FROM auth_sessions WHERE id = ?',
+      [requestId]
+    );
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return NextResponse.json({ 
+        status: 'expired',
+        error: 'Request not found or expired',
+        success: false
+      }, { status: 410 });
     }
 
-    // Получаем статус из базы данных
-    const connection = await getConnection();
-    try {
-      const [rows] = await connection.execute(
-        'SELECT * FROM auth_sessions WHERE id = ?',
-        [requestId]
-      );
+    const session = rows[0] as any;
 
-      if (!Array.isArray(rows) || rows.length === 0) {
-        return NextResponse.json({ 
-          status: 'expired',
-          error: 'Request not found or expired',
-          success: false
-        }, { status: 410 });
+    // Проверяем, не истек ли запрос (5 минут)
+    const createdAt = new Date(session.created_at).getTime();
+    if (Date.now() - createdAt > 5 * 60 * 1000) {
+      return NextResponse.json({ 
+        status: 'expired',
+        error: 'Request not found or expired',
+        success: false
+      }, { status: 410 });
+    }
+
+    if (session.status === 'approved') {
+      // Создаем сессию и устанавливаем cookie
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      const sessionData = {
+        token: sessionToken,
+        timestamp: Date.now(),
+        ip: session.ip,
+        userAgent: session.user_agent
+      };
+
+      // Шифруем данные сессии с использованием безопасного метода
+      if (!SESSION_SECRET) {
+        console.error('SESSION_SECRET not configured');
+        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
       }
+      
+      const encryptedData = encryptSessionData(sessionData, SESSION_SECRET);
 
-      const session = rows[0] as any;
+      // Устанавливаем cookie
+      const cookieStore = await cookies();
+      cookieStore.set('admin-session', encryptedData, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 // 24 часа
+      });
 
-      // Проверяем, не истек ли запрос (5 минут)
-      const createdAt = new Date(session.created_at).getTime();
-      if (Date.now() - createdAt > 5 * 60 * 1000) {
-        return NextResponse.json({ 
-          status: 'expired',
-          error: 'Request not found or expired',
-          success: false
-        }, { status: 410 });
-      }
-
-      if (session.status === 'approved') {
-        // Создаем сессию и устанавливаем cookie
-        const sessionToken = crypto.randomBytes(32).toString('hex');
-        const sessionData = {
-          token: sessionToken,
-          timestamp: Date.now(),
-          ip: session.ip,
-          userAgent: session.user_agent
-        };
-
-        // Шифруем данные сессии с использованием безопасного метода
-        if (!SESSION_SECRET) {
-          console.error('SESSION_SECRET not configured');
-          return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-        }
-        
-        const encryptedData = encryptSessionData(sessionData, SESSION_SECRET);
-
-        // Устанавливаем cookie
-        const cookieStore = await cookies();
-        cookieStore.set('admin-session', encryptedData, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
-          maxAge: 24 * 60 * 60 // 24 часа
-        });
-
-        return NextResponse.json({ 
-          success: true,
-          message: 'Login successful'
-        });
-      } else if (session.status === 'denied') {
-        return NextResponse.json({ 
-          success: false,
-          message: 'Access denied'
-        });
-      } else {
-        return NextResponse.json({ 
-          status: 'pending',
-          message: 'Waiting for confirmation...'
-        });
-      }
-    } catch (error) {
-      console.error('Status check error:', error);
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-    } finally {
-      connection.release();
+      return NextResponse.json({ 
+        success: true,
+        message: 'Login successful'
+      });
+    } else if (session.status === 'denied') {
+      return NextResponse.json({ 
+        success: false,
+        message: 'Access denied'
+      });
+    } else {
+      return NextResponse.json({ 
+        status: 'pending',
+        message: 'Waiting for confirmation...'
+      });
     }
   } catch (error) {
-    console.error('Error in GET handler:', error);
+    console.error('Status check error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 

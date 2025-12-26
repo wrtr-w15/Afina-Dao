@@ -35,27 +35,26 @@ export async function GET(request: NextRequest) {
 
 // PUT /api/subscription-pricing - обновить цены подписок
 export async function PUT(request: NextRequest) {
+  // Проверка аутентификации администратора
+  const { checkAdminAuth } = await import('@/lib/security-middleware');
+  const authResult = await checkAdminAuth(request);
+  if (authResult) return authResult;
+
+  const data: UpdateSubscriptionPricingData[] = await request.json();
+  
+  if (!Array.isArray(data) || data.length === 0) {
+    return NextResponse.json({ error: 'Invalid data format' }, { status: 400 });
+  }
+
+  const connection = await getConnection();
   try {
-    // Проверка аутентификации администратора
-    const { checkAdminAuth } = await import('@/lib/security-middleware');
-    const authResult = await checkAdminAuth(request);
-    if (authResult) return authResult;
-
-    const data: UpdateSubscriptionPricingData[] = await request.json();
-    
-    if (!Array.isArray(data) || data.length === 0) {
-      return NextResponse.json({ error: 'Invalid data format' }, { status: 400 });
-    }
-
-    const connection = await getConnection();
-    try {
-      // Обновляем каждую цену
-      for (const item of data) {
-        if (!item.periodMonths || !item.monthlyPrice || item.monthlyPrice <= 0) {
-          return NextResponse.json({ 
-            error: `Invalid data for period ${item.periodMonths}` 
-          }, { status: 400 });
-        }
+    // Обновляем каждую цену
+    for (const item of data) {
+      if (!item.periodMonths || !item.monthlyPrice || item.monthlyPrice <= 0) {
+        return NextResponse.json({ 
+          error: `Invalid data for period ${item.periodMonths}` 
+        }, { status: 400 });
+      }
 
       // Проверяем, существует ли запись
       const [existing] = await connection.execute(
@@ -82,16 +81,12 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-      return NextResponse.json({ message: 'Subscription pricing updated successfully' });
-    } catch (error) {
-      console.error('Error updating subscription pricing:', error);
-      return NextResponse.json({ error: 'Failed to update subscription pricing' }, { status: 500 });
-    } finally {
-      connection.release();
-    }
+    return NextResponse.json({ message: 'Subscription pricing updated successfully' });
   } catch (error) {
-    console.error('Error in PUT handler:', error);
+    console.error('Error updating subscription pricing:', error);
     return NextResponse.json({ error: 'Failed to update subscription pricing' }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
