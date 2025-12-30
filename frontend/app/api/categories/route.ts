@@ -9,21 +9,21 @@ export async function GET() {
     
     const [categories] = await connection.execute(`
       SELECT * FROM categories 
-      ORDER BY isActive DESC, sortOrder ASC, name ASC
+      ORDER BY is_active DESC, sort_order ASC, name ASC
     `);
 
     // Преобразуем данные из базы в формат фронтенда
-    // Структура таблицы использует camelCase
+    // Структура таблицы использует snake_case
     const formattedCategories = (categories as any[]).map(category => ({
       id: category.id,
       name: category.name,
       description: category.description || null,
       color: category.color || '#3B82F6', // Значение по умолчанию если поля нет
       icon: category.icon || null,
-      isActive: Boolean(category.isActive),
-      sortOrder: category.sortOrder || 0,
-      createdAt: category.createdAt,
-      updatedAt: category.updatedAt
+      isActive: Boolean(category.is_active),
+      sortOrder: category.sort_order || 0,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at
     }));
 
     return NextResponse.json(formattedCategories);
@@ -62,9 +62,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Создаем новую категорию
-    // Структура таблицы использует camelCase
+    // Структура таблицы использует snake_case
     const [result] = await connection.execute(`
-      INSERT INTO categories (name, description, color, icon, isActive, sortOrder)
+      INSERT INTO categories (name, description, color, icon, is_active, sort_order)
       VALUES (?, ?, ?, ?, ?, ?)
     `, [
       data.name,
@@ -75,12 +75,30 @@ export async function POST(request: NextRequest) {
       data.sortOrder || 0
     ]);
 
-    const categoryId = (result as any).insertId;
+    // Получаем созданную категорию для возврата (используем имя, так как оно уникально)
+    const [createdCategory] = await connection.execute(
+      'SELECT * FROM categories WHERE name = ?',
+      [data.name]
+    );
 
-    return NextResponse.json({ 
-      id: categoryId,
-      message: 'Category created successfully' 
-    });
+    if ((createdCategory as any[]).length === 0) {
+      return NextResponse.json({ error: 'Failed to retrieve created category' }, { status: 500 });
+    }
+
+    const category = (createdCategory as any[])[0];
+    const formattedCategory = {
+      id: category.id,
+      name: category.name,
+      description: category.description || null,
+      color: category.color || '#3B82F6',
+      icon: category.icon || null,
+      isActive: Boolean(category.is_active),
+      sortOrder: category.sort_order || 0,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at
+    };
+
+    return NextResponse.json(formattedCategory, { status: 201 });
   } catch (error) {
     console.error('Error creating category:', error);
     return NextResponse.json({ error: 'Failed to create category' }, { status: 500 });

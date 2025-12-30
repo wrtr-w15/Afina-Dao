@@ -46,14 +46,20 @@ export default function CategoriesPage() {
   const loadCategories = async () => {
     try {
       setIsLoading(true);
+      setError('');
       const [categoriesData, statsData] = await Promise.all([
         getCategories(),
         getCategoriesStats()
       ]);
       setCategories(categoriesData);
       setStats(statsData);
+      if (categoriesData.length === 0) {
+        // Не показываем ошибку, если просто нет категорий - это нормально
+        console.log('No categories found');
+      }
     } catch (err) {
-      setError('Ошибка загрузки категорий');
+      console.error('Error loading categories:', err);
+      setError('Ошибка загрузки категорий: ' + (err instanceof Error ? err.message : 'Неизвестная ошибка'));
     } finally {
       setIsLoading(false);
     }
