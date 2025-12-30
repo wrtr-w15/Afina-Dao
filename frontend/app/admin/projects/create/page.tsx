@@ -60,12 +60,24 @@ export default function CreateProjectPage() {
       setCategories(categoriesData);
       // Фильтруем только активные категории для установки значения по умолчанию
       const activeCategories = categoriesData.filter(cat => cat.isActive);
-      // Устанавливаем первую активную категорию по умолчанию, если есть
-      if (activeCategories.length > 0 && !formData.category) {
-        setFormData(prev => ({
-          ...prev,
-          category: activeCategories[0].name
-        }));
+      
+      // Устанавливаем первую активную категорию по умолчанию, если нет выбранной категории
+      // или если выбранная категория больше не активна
+      if (activeCategories.length > 0) {
+        setFormData(prev => {
+          const currentCategory = prev.category;
+          // Проверяем, существует ли текущая категория среди активных
+          const categoryExists = activeCategories.some(cat => cat.name === currentCategory);
+          
+          // Если категория не выбрана или текущая категория не активна, выбираем первую активную
+          if (!currentCategory || !categoryExists) {
+            return {
+              ...prev,
+              category: activeCategories[0].name
+            };
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.error('Error loading categories:', err);
@@ -106,7 +118,11 @@ export default function CreateProjectPage() {
       if (!formData.description.trim()) {
         throw new Error('Описание проекта обязательно');
       }
-      if (!formData.category) {
+      const activeCategories = categories.filter(cat => cat.isActive);
+      if (activeCategories.length === 0) {
+        throw new Error('Нет доступных активных категорий. Создайте категорию перед созданием проекта.');
+      }
+      if (!formData.category || !activeCategories.some(cat => cat.name === formData.category)) {
         throw new Error('Выберите категорию проекта');
       }
 
@@ -256,7 +272,7 @@ export default function CreateProjectPage() {
 
                   <Select
                     label="Категория *"
-                    value={formData.category}
+                    value={formData.category || ''}
                     onChange={(e) => handleSelectChange('category', e.target.value)}
                     options={categories
                       .filter(category => category.isActive)
@@ -264,7 +280,8 @@ export default function CreateProjectPage() {
                         value: category.name,
                         label: category.name
                       }))}
-                    placeholder="Выберите категорию"
+                    placeholder={categories.filter(cat => cat.isActive).length === 0 ? "Нет доступных категорий" : "Выберите категорию"}
+                    required
                   />
                 </div>
 

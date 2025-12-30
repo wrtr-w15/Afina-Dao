@@ -17,7 +17,7 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'chi
 }
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, error, helperText, options, placeholder, ...props }, ref) => {
+  ({ className, label, error, helperText, options, placeholder, value, ...props }, ref) => {
     return (
       <div className="w-full">
         {label && (
@@ -36,28 +36,31 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
               className
             )}
             ref={ref}
+            value={value}
             {...props}
           >
-            {placeholder && (
-              <option value="" disabled className="text-gray-500 dark:text-gray-400">
-                {placeholder}
-              </option>
-            )}
             {options.length === 0 ? (
               <option value="" disabled className="text-gray-500 dark:text-gray-400">
                 Нет доступных категорий
               </option>
             ) : (
-              options.map((option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                  disabled={option.disabled}
-                  className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  {option.label}
-                </option>
-              ))
+              <>
+                {placeholder && !value && (
+                  <option value="" disabled className="text-gray-500 dark:text-gray-400">
+                    {placeholder}
+                  </option>
+                )}
+                {options.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    disabled={option.disabled}
+                    className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </>
             )}
           </select>
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
