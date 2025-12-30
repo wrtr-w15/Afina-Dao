@@ -58,15 +58,18 @@ export default function CreateProjectPage() {
     try {
       const categoriesData = await getCategories();
       setCategories(categoriesData);
-      // Устанавливаем первую категорию по умолчанию, если есть
-      if (categoriesData.length > 0 && !formData.category) {
+      // Фильтруем только активные категории для установки значения по умолчанию
+      const activeCategories = categoriesData.filter(cat => cat.isActive);
+      // Устанавливаем первую активную категорию по умолчанию, если есть
+      if (activeCategories.length > 0 && !formData.category) {
         setFormData(prev => ({
           ...prev,
-          category: categoriesData[0].name
+          category: activeCategories[0].name
         }));
       }
     } catch (err) {
       console.error('Error loading categories:', err);
+      setError('Ошибка загрузки категорий. Проверьте подключение к серверу.');
     }
   };
 
@@ -79,11 +82,10 @@ export default function CreateProjectPage() {
     }));
   };
 
-  const handleSelectChange = (name: string, value: string | React.ChangeEvent<HTMLSelectElement>) => {
-    const actualValue = typeof value === 'string' ? value : value.target.value;
+  const handleSelectChange = (name: string, value: string) => {
     setFormData(prev => ({
       ...prev,
-      [name]: actualValue
+      [name]: value
     }));
   };
 
@@ -245,7 +247,7 @@ export default function CreateProjectPage() {
                   <Select
                     label="Статус"
                     value={formData.status}
-                    onChange={(value) => handleSelectChange('status', value)}
+                    onChange={(e) => handleSelectChange('status', e.target.value)}
                     options={Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => ({
                       value,
                       label
@@ -253,13 +255,16 @@ export default function CreateProjectPage() {
                   />
 
                   <Select
-                    label="Категория"
+                    label="Категория *"
                     value={formData.category}
-                    onChange={(value) => handleSelectChange('category', value)}
-                    options={categories.map(category => ({
-                      value: category.name,
-                      label: category.name
-                    }))}
+                    onChange={(e) => handleSelectChange('category', e.target.value)}
+                    options={categories
+                      .filter(category => category.isActive)
+                      .map(category => ({
+                        value: category.name,
+                        label: category.name
+                      }))}
+                    placeholder="Выберите категорию"
                   />
                 </div>
 
