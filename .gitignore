@@ -8,10 +8,13 @@ frontend/.next/
 backend/dist/
 frontend/out/
 
-# Environment variables
+# Environment variables (никогда не коммитить файлы с секретами!)
 .env
 .env.local
-.env*.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+**/.env.local
 
 # Logs
 logs/
@@ -39,9 +42,10 @@ pids/
 ehthumbs.db
 Thumbs.db
 
-# IDE
+# IDE & Editor
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 *~
