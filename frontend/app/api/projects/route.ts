@@ -24,6 +24,7 @@ export async function GET() {
         name: project.name,
         sidebarName: project.sidebar_name,
         description: project.description,
+        content: project.content,
         status: project.status,
         category: project.category,
         budget: project.budget,
@@ -33,9 +34,10 @@ export async function GET() {
         translations: (translations as any[]).map(t => ({
           locale: t.locale,
           name: t.name,
-          description: t.description
+          description: t.description,
+          content: t.content
         })),
-        blocks: [], // Пока без блоков
+        blocks: [], // Legacy - kept for backward compatibility
         createdAt: project.created_at,
         updatedAt: project.updated_at
       };
@@ -72,13 +74,14 @@ export async function POST(request: NextRequest) {
     
     // Создаем проект
     await connection.execute(`
-      INSERT INTO projects (id, name, sidebar_name, description, status, category, budget, website, telegram_post, image)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, sidebar_name, description, content, status, category, budget, website, telegram_post, image)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       projectId,
       data.name,
       data.sidebarName,
       data.description,
+      data.content || null,
       cleanStatus,
       data.category,
       data.budget || null,
@@ -91,14 +94,15 @@ export async function POST(request: NextRequest) {
     if (data.translations && Array.isArray(data.translations)) {
       for (const translation of data.translations) {
         await connection.execute(`
-          INSERT INTO project_translations (id, project_id, locale, name, description)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO project_translations (id, project_id, locale, name, description, content)
+          VALUES (?, ?, ?, ?, ?, ?)
         `, [
           crypto.randomUUID(),
           projectId,
           translation.locale,
           translation.name,
-          translation.description
+          translation.description,
+          translation.content || null
         ]);
       }
     }

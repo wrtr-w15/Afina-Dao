@@ -90,6 +90,7 @@ export async function GET(
         name: project.name,
         sidebarName: project.sidebar_name,
         description: project.description,
+        content: project.content,
         status: project.status,
         category: project.category,
         website: project.website,
@@ -98,9 +99,10 @@ export async function GET(
         translations: (translations as any[]).map(t => ({
           locale: t.locale,
           name: t.name,
-          description: t.description
+          description: t.description,
+          content: t.content
         })),
-        blocks: blocksWithTranslations,
+        blocks: blocksWithTranslations, // Legacy - kept for backward compatibility
         createdAt: project.created_at,
         updatedAt: project.updated_at
       };
@@ -182,7 +184,7 @@ export async function PUT(
     await connection.execute(`
       UPDATE projects 
       SET sidebar_name = ?, status = ?, category = ?, 
-          website = ?, telegram_post = ?, image = ?, 
+          website = ?, telegram_post = ?, image = ?, content = ?,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -192,6 +194,7 @@ export async function PUT(
       data.website || null,
       data.telegramPost || null,
       data.image || null,
+      data.content || null,
       id
     ]);
     
@@ -199,18 +202,20 @@ export async function PUT(
     if (data.translations && Array.isArray(data.translations)) {
       for (const translation of data.translations) {
         await connection.execute(`
-          INSERT INTO project_translations (id, project_id, locale, name, description)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO project_translations (id, project_id, locale, name, description, content)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE 
             name = VALUES(name),
             description = VALUES(description),
+            content = VALUES(content),
             updated_at = CURRENT_TIMESTAMP
         `, [
           crypto.randomUUID(),
           id,
           translation.locale,
           translation.name,
-          translation.description
+          translation.description,
+          translation.content || null
         ]);
       }
     }

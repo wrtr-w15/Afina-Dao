@@ -3,18 +3,14 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '../../../../components/admin/AdminLayout';
-import { Card } from '../../../../components/ui/Card';
-import { Button } from '../../../../components/ui/Button';
-import { Input } from '../../../../components/ui/Input';
-import { Textarea } from '../../../../components/ui/Textarea';
-import { Select } from '../../../../components/ui/Select';
-import { Alert } from '../../../../components/ui/Alert';
 import { 
   ArrowLeft, 
   Save, 
   Palette,
   Tag,
-  Check
+  CheckCircle,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { CreateCategoryData, CATEGORY_COLORS, CATEGORY_ICONS } from '../../../../types/category';
 import { createCategory } from '../../../../lib/categories';
@@ -38,14 +34,7 @@ export default function CreateCategoryPage() {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
+      [name]: name === 'sortOrder' ? parseInt(value) || 0 : value
     }));
   };
 
@@ -55,7 +44,6 @@ export default function CreateCategoryPage() {
     setError('');
 
     try {
-      // Валидация
       if (!formData.name.trim()) {
         throw new Error('Название категории обязательно');
       }
@@ -63,10 +51,9 @@ export default function CreateCategoryPage() {
       await createCategory(formData);
       setSuccess(true);
       
-      // Перенаправление через 2 секунды
       setTimeout(() => {
         router.push('/admin/categories');
-      }, 2000);
+      }, 1500);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Произошла ошибка');
@@ -75,164 +62,182 @@ export default function CreateCategoryPage() {
     }
   };
 
-  const colorOptions = CATEGORY_COLORS.map(color => ({
-    value: color,
-    label: color // Просто текст, без JSX
-  }));
-
-  const iconOptions = CATEGORY_ICONS.map(icon => ({
-    value: icon,
-    label: icon
-  }));
-
   return (
-    <AdminLayout title="Создание категории" description="Создание новой категории для проектов">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <AdminLayout>
+      <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="outline"
+        <div className="flex items-center gap-4 mb-8">
+          <button
             onClick={() => router.back()}
-            className="flex items-center space-x-2"
+            className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
           >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Назад</span>
-          </Button>
+            <ArrowLeft className="h-5 w-5" />
+          </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Создание категории
+            <h1 className="text-2xl font-bold text-white">
+              Новая категория
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Создайте новую категорию для проектов
+            <p className="text-gray-400 text-sm">
+              Создание категории для проектов
             </p>
           </div>
         </div>
 
+        {/* Messages */}
         {error && (
-          <Alert variant="error">
-            {error}
-          </Alert>
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 mb-6">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <span className="text-sm">{error}</span>
+          </div>
         )}
 
         {success && (
-          <Alert variant="success">
-            <Check className="h-4 w-4 mr-2" />
-            Категория успешно создана! Перенаправление...
-          </Alert>
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-6">
+            <CheckCircle className="h-5 w-5 flex-shrink-0" />
+            <span className="text-sm">Категория создана! Перенаправление...</span>
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Основная информация */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Основная информация
-            </h2>
+          {/* Basic Info */}
+          <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+            <div className="p-4 border-b border-white/5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <Tag className="h-5 w-5 text-emerald-400" />
+              </div>
+              <h2 className="font-semibold text-white">Основная информация</h2>
+            </div>
             
-            <div className="space-y-4">
-              <Input
-                label="Название категории *"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="Например: DeFi, NFT, Gaming"
-                required
-              />
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">
+                  Название <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="DeFi, NFT, Gaming..."
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-all"
+                  required
+                />
+              </div>
 
-              <Textarea
-                label="Описание"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="Краткое описание категории"
-                rows={3}
-              />
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">
+                  Описание
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="Краткое описание категории"
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-all resize-none"
+                />
+              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Порядок сортировки"
-                  name="sortOrder"
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">
+                  Порядок сортировки
+                </label>
+                <input
                   type="number"
+                  name="sortOrder"
                   value={formData.sortOrder}
                   onChange={handleInputChange}
                   placeholder="0"
+                  className="w-32 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-all"
                 />
               </div>
             </div>
-          </Card>
+          </div>
 
-          {/* Внешний вид */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Внешний вид
-            </h2>
+          {/* Appearance */}
+          <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+            <div className="p-4 border-b border-white/5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center">
+                <Palette className="h-5 w-5 text-violet-400" />
+              </div>
+              <h2 className="font-semibold text-white">Внешний вид</h2>
+            </div>
             
-            <div className="space-y-4">
+            <div className="p-5 space-y-5">
+              {/* Color Picker */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm text-gray-400 mb-3">
                   Цвет категории
                 </label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-8 gap-2">
                   {CATEGORY_COLORS.map(color => (
                     <button
                       key={color}
                       type="button"
                       onClick={() => setFormData({ ...formData, color })}
-                      className={`w-full h-10 rounded-lg border-2 flex items-center justify-center ${
+                      className={`aspect-square rounded-xl border-2 flex items-center justify-center transition-all ${
                         formData.color === color 
-                          ? 'border-blue-500 ring-2 ring-blue-200' 
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'border-white scale-110 shadow-lg' 
+                          : 'border-transparent hover:scale-105'
                       }`}
                       style={{ backgroundColor: color }}
                     >
                       {formData.color === color && (
-                        <span className="text-white text-sm font-bold">✓</span>
+                        <CheckCircle className="h-4 w-4 text-white drop-shadow-md" />
                       )}
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 flex items-center space-x-2">
-                  <Palette className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    Выбранный цвет: {formData.color}
-                  </span>
+                <div className="mt-3 flex items-center gap-2">
+                  <div 
+                    className="w-4 h-4 rounded-full" 
+                    style={{ backgroundColor: formData.color }}
+                  />
+                  <span className="text-sm text-gray-500">{formData.color}</span>
                 </div>
               </div>
 
+              {/* Icon Picker */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm text-gray-400 mb-3">
                   Иконка
                 </label>
-                <Select
+                <select
                   value={formData.icon}
-                  onChange={(e) => handleSelectChange('icon', e.target.value)}
-                  options={iconOptions}
-                />
-                <div className="mt-2 flex items-center space-x-2">
-                  <Tag className="h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    Выбранная иконка: {formData.icon}
-                  </span>
-                </div>
+                  onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-violet-500/50 transition-all"
+                >
+                  {CATEGORY_ICONS.map(icon => (
+                    <option key={icon} value={icon} className="bg-[#1a1a2e]">
+                      {icon}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          </Card>
+          </div>
 
           {/* Actions */}
-          <div className="flex justify-end space-x-4">
-            <Button 
+          <div className="flex justify-end gap-3">
+            <button 
               type="button" 
-              variant="outline"
               onClick={() => router.back()}
+              className="px-5 py-2.5 rounded-xl bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
             >
               Отмена
-            </Button>
-            <Button 
+            </button>
+            <button 
               type="submit" 
               disabled={isLoading}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              <Save className="h-4 w-4 mr-2" />
-              {isLoading ? 'Создание...' : 'Создать категорию'}
-            </Button>
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {isLoading ? 'Создание...' : 'Создать'}
+            </button>
           </div>
         </form>
       </div>

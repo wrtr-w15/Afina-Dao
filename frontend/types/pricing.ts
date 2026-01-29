@@ -34,6 +34,8 @@ export interface SubscriptionPricing {
   id: string;
   periodMonths: number;
   monthlyPrice: number;
+  isActive: boolean;
+  isPopular: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,4 +43,6 @@ export interface SubscriptionPricing {
 export interface UpdateSubscriptionPricingData {
   periodMonths: number;
   monthlyPrice: number;
+  isActive?: boolean;
+  isPopular?: boolean;
 }

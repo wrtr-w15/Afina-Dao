@@ -4,25 +4,15 @@
   "description": "Afina DAO Wiki - Multi-language knowledge base platform",
   "private": true,
   "workspaces": [
-    "frontend",
-    "backend"
+    "frontend"
   ],
   "scripts": {
-    "dev": "./start-dev.sh",
-    "start": "npm run start:backend & npm run start:frontend",
-    "start:backend": "cd backend && npm run start:dev",
-    "start:frontend": "cd frontend && npm run dev",
-    "build": "npm run build:backend && npm run build:frontend",
-    "build:backend": "cd backend && npm run build",
-    "build:frontend": "cd frontend && npm run build",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "clean": "rm -rf backend/node_modules frontend/node_modules backend/dist frontend/.next",
-    "lint": "npm run lint:backend && npm run lint:frontend",
-    "lint:backend": "cd backend && npm run lint",
-    "lint:frontend": "cd frontend && npm run lint",
-    "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "cd backend && npm run test",
-    "test:frontend": "cd frontend && npm run test"
+    "dev": "cd frontend && npm run dev",
+    "start": "cd frontend && npm run start",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd frontend && npm install",
+    "clean": "rm -rf frontend/node_modules frontend/.next",
+    "lint": "cd frontend && npm run lint"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
@@ -36,7 +26,6 @@
     "wiki",
     "knowledge-base",
     "nextjs",
-    "nestjs",
     "typescript",
     "i18n",
     "dao"

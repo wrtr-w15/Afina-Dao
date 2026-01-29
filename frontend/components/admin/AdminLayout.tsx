@@ -35,7 +35,14 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-[#0f0f17]">
+      {/* Background gradient */}
+      <div className="fixed inset-0 z-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0f0f17] via-[#151521] to-[#0f0f17]" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-600/5 rounded-full blur-[100px]" />
+      </div>
+
       {/* Admin Sidebar */}
       <AdminSidebar 
         isCollapsed={sidebarCollapsed}
@@ -44,13 +51,10 @@ export default function AdminLayout({
       />
 
       {/* Main Content */}
-      <div className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-12' : 'ml-64'}`}>
-        <div className="min-h-screen bg-white dark:bg-gray-900">
-          {/* Page Content */}
-          <main className="p-6">
-            {children}
-          </main>
-        </div>
+      <div className={`relative z-10 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+        <main className="min-h-screen p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

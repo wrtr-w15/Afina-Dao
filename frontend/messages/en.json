@@ -102,6 +102,15 @@
   "language": {
     "selectLanguage": "Select language"
   },
+  "nav": {
+    "community": "Community",
+    "communityShort": "Comm.",
+    "projects": "Projects",
+    "contacts": "Contacts",
+    "switchLanguage": "Switch language",
+    "lightTheme": "Light theme",
+    "darkTheme": "Dark theme"
+  },
   "search": {
     "placeholder": "Search",
     "noResults": "Nothing found",
@@ -206,7 +215,71 @@
     },
     "header": {
       "title": "AfinaDAO WorkShop",
-      "subtitle": "A private community for those who want to run UI scripts on Afina and participate in current activities. We created it for users who value independent installation, stable operation, and direct access to support."
+      "subtitle": "A private community for those who want to run UI scripts on Afina and participate in current activities"
+    },
+    "roadmap": {
+      "title": "What You Get",
+      "subtitle": "Everything you need for effective work with Afina",
+      "item1": {
+        "title": "Full Access to Scripts",
+        "description": "All UI scripts without restrictions. Full versions with all activities and regular updates."
+      },
+      "item2": {
+        "title": "Support Until Result",
+        "description": "First-class support for both scripts and the program as a whole. Help with installation and setup until complete result."
+      },
+      "item3": {
+        "title": "Community on Discord",
+        "description": "Communication in private channels on the official Afina Discord server. Discussion chat, ideas, cases and mutual help."
+      },
+      "item4": {
+        "title": "Guides in Notion",
+        "description": "Detailed text guides and instructions for each project. Tips, nuances, and useful techniques for working with Afina."
+      },
+      "item5": {
+        "title": "Your Ideas — Our Implementation",
+        "description": "Suggest projects for automation. We constantly add new features at the request of participants."
+      }
+    },
+    "pricingSection": {
+      "title": "Choose Your Plan",
+      "subtitle": "Longer period — better deal",
+      "popular": "Popular",
+      "perMonth": "/mo",
+      "total": "Total",
+      "period": {
+        "month1": "1 Month",
+        "month3": "3 Months",
+        "month6": "6 Months",
+        "month12": "12 Months"
+      },
+      "sublabel": {
+        "starter": "Try it",
+        "save": "Save more"
+      },
+      "plan1": {
+        "label": "1 Month",
+        "sublabel": "Try it"
+      },
+      "plan3": {
+        "label": "3 Months",
+        "sublabel": "Optimal"
+      },
+      "plan6": {
+        "label": "6 Months",
+        "sublabel": "Maximum"
+      },
+      "features": {
+        "scripts": "All scripts without limits",
+        "support": "24/7 Support",
+        "discord": "Private Discord access",
+        "notion": "Guides in Notion"
+      }
+    },
+    "cta": {
+      "button": "Subscribe Now",
+      "hint": "Payment and activation via Telegram bot",
+      "terms": "Terms and Conditions"
     },
     "benefits": {
       "title": "What you get inside AfinaDAO WorkShop:",

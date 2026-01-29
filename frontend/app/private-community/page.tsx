@@ -1,419 +1,496 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from '@/components/LayoutComponent';
-import { Card } from '@/components/ui/Card';
-import { Users, CheckCircle2, MessageCircle, ExternalLink, Sparkles, Activity, Fingerprint } from 'lucide-react';
+import { 
+  Zap, 
+  Shield, 
+  Code, 
+  MessageCircle, 
+  Lightbulb,
+  Send,
+  BookOpen,
+  Check,
+  TrendingUp,
+  Star,
+  LucideIcon,
+  FileText,
+  Calendar
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { Tariff, TariffPrice } from '@/types/tariff';
 import Link from 'next/link';
-import ReflectiveCard from '@/components/ReflectiveCard';
-import { SubscriptionPricing } from '@/types/pricing';
+
+// Hook for scroll-triggered animations
+function useScrollAnimation(threshold = 0.2) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.unobserve(element);
+        }
+      },
+      { threshold, rootMargin: '0px 0px -50px 0px' }
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [threshold]);
+
+  return { ref, isVisible };
+}
+
+interface RoadmapItemData {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  color: string;
+}
+
+// Roadmap item component with scroll animation
+function RoadmapItem({ 
+  item, 
+  index, 
+  isLeft 
+}: { 
+  item: RoadmapItemData; 
+  index: number; 
+  isLeft: boolean;
+}) {
+  const { ref, isVisible } = useScrollAnimation(0.15);
+  const Icon = item.icon;
+
+  return (
+    <div
+      ref={ref}
+      className={`relative flex items-center gap-4 md:gap-8 ${
+        isLeft ? 'md:flex-row' : 'md:flex-row-reverse'
+      }`}
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible 
+          ? 'translateY(0) translateX(0)' 
+          : `translateY(30px) translateX(${isLeft ? '-20px' : '20px'})`,
+        transition: `all 0.7s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.1}s`,
+      }}
+    >
+      {/* Content Card */}
+      <div className={`flex-1 ${isLeft ? 'md:text-right' : 'md:text-left'}`}>
+        <div className={`
+          p-5 md:p-6 rounded-2xl 
+          bg-white/5 backdrop-blur-sm 
+          border border-white/10 
+          hover:bg-white/10 hover:border-white/20 
+          transition-all duration-300
+          ${isLeft ? 'md:ml-auto' : 'md:mr-auto'}
+          md:max-w-md
+        `}>
+          <div className={`flex items-center gap-3 mb-3 ${isLeft ? 'md:flex-row-reverse' : ''}`}>
+            <div 
+              className={`p-2 rounded-xl bg-gradient-to-br ${item.color}`}
+              style={{
+                opacity: isVisible ? 1 : 0,
+                transform: isVisible ? 'scale(1)' : 'scale(0.5)',
+                transition: `all 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${0.2 + index * 0.1}s`,
+              }}
+            >
+              <Icon className="h-5 w-5 text-white" />
+            </div>
+            <h3 className="text-lg font-semibold text-white">
+              {item.title}
+            </h3>
+          </div>
+          <p className="text-gray-400 text-sm leading-relaxed">
+            {item.description}
+          </p>
+        </div>
+      </div>
+
+      {/* Center dot */}
+      <div 
+        className="hidden md:flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg shadow-blue-500/30 z-10"
+        style={{
+          opacity: isVisible ? 1 : 0,
+          transform: isVisible ? 'scale(1)' : 'scale(0)',
+          transition: `all 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${0.1 + index * 0.1}s`,
+        }}
+      />
+
+      {/* Empty space for opposite side */}
+      <div className="hidden md:block flex-1" />
+    </div>
+  );
+}
+
+// Pricing Card Component
+function PricingCard({ 
+  data, 
+  isLoading, 
+  basePrice,
+  isVisible,
+  index,
+  t
+}: {
+  data: TariffPrice;
+  isLoading: boolean;
+  basePrice: number;
+  isVisible: boolean;
+  index: number;
+  t: (key: string) => string;
+}) {
+  const isPop = data.isPopular;
+  const total = data.periodMonths * data.monthlyPrice;
+  const savings = data.periodMonths > 1 ? (basePrice * data.periodMonths) - total : 0;
+
+  const features = [
+    t('pricingSection.features.scripts'),
+    t('pricingSection.features.support'),
+    t('pricingSection.features.discord'),
+    t('pricingSection.features.notion'),
+  ];
+
+  const getPeriodLabel = (months: number) => {
+    if (months === 1) return t('pricingSection.period.month1');
+    if (months === 3) return t('pricingSection.period.month3');
+    if (months === 6) return t('pricingSection.period.month6');
+    if (months === 12) return t('pricingSection.period.month12');
+    return `${months} мес.`;
+  };
+
+  return (
+    <div
+      className={`
+        relative group flex-1 min-w-[280px] max-w-[340px]
+        ${isPop ? 'md:-mt-4 md:mb-4' : ''}
+      `}
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible 
+          ? 'translateY(0) scale(1)' 
+          : 'translateY(30px) scale(0.95)',
+        transition: `all 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.15}s`,
+      }}
+    >
+      {/* Glow effect for popular */}
+      {isPop && (
+        <div className="absolute -inset-[1px] bg-gradient-to-b from-blue-500 via-purple-500 to-pink-500 rounded-3xl opacity-75 blur-sm group-hover:opacity-100 transition-opacity" />
+      )}
+      
+      <div className={`
+        relative h-full rounded-3xl overflow-hidden
+        ${isPop 
+          ? 'bg-gradient-to-b from-slate-900 to-slate-950' 
+          : 'bg-white/[0.03] hover:bg-white/[0.06]'
+        }
+        border ${isPop ? 'border-white/20' : 'border-white/10 hover:border-white/20'}
+        transition-all duration-500
+      `}>
+        <div className="p-6 md:p-8">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className={`
+                p-2.5 rounded-xl 
+                ${isPop 
+                  ? 'bg-gradient-to-br from-blue-500 to-purple-600' 
+                  : 'bg-white/10'
+                }
+              `}>
+                <Calendar className={`h-5 w-5 ${isPop ? 'text-white' : 'text-gray-400'}`} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">{getPeriodLabel(data.periodMonths)}</h3>
+                <p className="text-xs text-gray-500">
+                  {data.periodMonths === 1 ? t('pricingSection.sublabel.starter') : t('pricingSection.sublabel.save')}
+                </p>
+              </div>
+            </div>
+            {isPop && (
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+                <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">{t('pricingSection.popular')}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Price */}
+          <div className="mb-6">
+            <div className="flex items-baseline gap-1">
+              <span className={`text-4xl md:text-5xl font-bold ${isPop ? 'text-white' : 'text-gray-100'}`}>
+                {isLoading ? '...' : `${data.monthlyPrice.toFixed(0)}`}
+              </span>
+              <span className="text-gray-500 text-sm">USDT/{t('pricingSection.perMonth')}</span>
+            </div>
+            {data.periodMonths > 1 && (
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-sm text-gray-400">
+                  {t('pricingSection.total')} <span className="text-white font-semibold">{total.toFixed(0)} USDT</span>
+                </span>
+                {savings > 0 && (
+                  <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    <TrendingUp className="h-3 w-3" />
+                    −{savings.toFixed(0)} USDT
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Divider */}
+          <div className={`h-px ${isPop ? 'bg-white/10' : 'bg-white/5'} mb-6`} />
+
+          {/* Features */}
+          <ul className="space-y-3">
+            {features.map((feature, i) => (
+              <li key={i} className="flex items-center gap-3">
+                <div className={`
+                  flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center
+                  ${isPop 
+                    ? 'bg-gradient-to-br from-blue-500 to-purple-600' 
+                    : 'bg-white/10'
+                  }
+                `}>
+                  <Check className="h-3 w-3 text-white" />
+                </div>
+                <span className="text-sm text-gray-300">{feature}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TELEGRAM_BOT_LINK = 'https://t.me/AfinaDaoBot';
+
+const roadmapIcons: LucideIcon[] = [Code, Shield, MessageCircle, BookOpen, Lightbulb];
+const roadmapColors = [
+  'from-blue-500 to-cyan-500',
+  'from-purple-500 to-pink-500',
+  'from-indigo-500 to-violet-500',
+  'from-amber-500 to-orange-500',
+  'from-rose-500 to-red-500',
+];
 
 export default function PrivateCommunityPage() {
   const t = useTranslations('privateCommunity');
-  const [pricing, setPricing] = useState<SubscriptionPricing[]>([]);
+  const [tariff, setTariff] = useState<Tariff | null>(null);
+  const [prices, setPrices] = useState<TariffPrice[]>([]);
   const [isLoadingPricing, setIsLoadingPricing] = useState(true);
-  
-  const benefits = [
-    { key: 'benefit1' },
-    { key: 'benefit2' },
-    { key: 'benefit3' },
-    { key: 'benefit4' },
-    { key: 'benefit5' },
-    { key: 'benefit6' },
-    { key: 'benefit7' },
-    { key: 'benefit8' },
-    { key: 'benefit9' },
-    { key: 'benefit10' },
-    { key: 'benefit11' },
-    { key: 'benefit12' },
-    { key: 'benefit13' }
-  ];
+  const pricingRef = useRef<HTMLDivElement>(null);
+  const [pricingVisible, setPricingVisible] = useState(false);
+
+  // Build roadmap items from translations
+  const roadmapItems: RoadmapItemData[] = [1, 2, 3, 4, 5].map((num, index) => ({
+    icon: roadmapIcons[index],
+    title: t(`roadmap.item${num}.title`),
+    description: t(`roadmap.item${num}.description`),
+    color: roadmapColors[index],
+  }));
 
   useEffect(() => {
-    loadPricing();
+    loadTariffs();
   }, []);
 
-  const loadPricing = async () => {
+  useEffect(() => {
+    const element = pricingRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setPricingVisible(true);
+          observer.unobserve(element);
+        }
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -50px 0px' }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const loadTariffs = async () => {
     try {
-      const response = await fetch('/api/subscription-pricing', {
-        cache: 'no-cache'
-      });
-      
+      // Загружаем активные тарифы (не кастомные, не архивные)
+      const response = await fetch('/api/tariffs?activeOnly=true', { cache: 'no-cache' });
       if (response.ok) {
         const data = await response.json();
-        setPricing(data);
+        if (data.tariffs && data.tariffs.length > 0) {
+          // Берём первый активный тариф и его цены
+          const activeTariff = data.tariffs[0] as Tariff;
+          setTariff(activeTariff);
+          setPrices(activeTariff.prices || []);
+        }
       }
     } catch (error) {
-      console.error('Error loading pricing:', error);
+      console.error('Error loading tariffs:', error);
     } finally {
       setIsLoadingPricing(false);
     }
   };
 
-  const getPricingForPeriod = useCallback((periodMonths: number) => {
-    return pricing.find(p => p.periodMonths === periodMonths);
-  }, [pricing]);
-
-  const calculateTotal = useCallback((periodMonths: number, monthlyPrice: number) => {
-    return periodMonths * monthlyPrice;
-  }, []);
-
-  const calculateSavings = useCallback((periodMonths: number, monthlyPrice: number) => {
-    if (periodMonths === 1) return 0;
-    
-    const basePrice = pricing.find(p => p.periodMonths === 1)?.monthlyPrice || monthlyPrice;
-    const totalBase = basePrice * periodMonths;
-    const totalCurrent = monthlyPrice * periodMonths;
-    
-    return totalBase - totalCurrent;
-  }, [pricing]);
-
-  const formatPrice = useCallback((price: number) => {
-    return price.toFixed(0);
-  }, []);
+  // Sort prices by period months
+  const sortedPrices = [...prices].sort((a, b) => a.periodMonths - b.periodMonths);
+  const popularIndex = sortedPrices.findIndex(p => p.isPopular);
   
+  let displayPricing: TariffPrice[] = sortedPrices;
+  
+  // If we have a popular item and at least 3 items, reorder to put popular in center
+  if (popularIndex !== -1 && sortedPrices.length >= 3) {
+    const popular = sortedPrices[popularIndex];
+    const others = sortedPrices.filter(p => !p.isPopular);
+    const middleIndex = Math.floor(others.length / 2);
+    displayPricing = [
+      ...others.slice(0, middleIndex),
+      popular,
+      ...others.slice(middleIndex)
+    ];
+  } else if (popularIndex !== -1 && sortedPrices.length === 2) {
+    // With 2 items, popular goes second (right)
+    const popular = sortedPrices[popularIndex];
+    const other = sortedPrices.find(p => !p.isPopular);
+    displayPricing = other ? [other, popular] : sortedPrices;
+  }
+
+  // Get base price (minimum period price) for savings calculation
+  const basePrice = sortedPrices.length > 0 
+    ? sortedPrices.reduce((min, p) => p.periodMonths < min.periodMonths ? p : min).monthlyPrice
+    : 0;
+
   return (
     <Layout title={t('title')} description={t('description')}>
-      <div className="max-w-5xl mx-auto p-6">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-6">
-            <div className="p-3 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full mr-4">
-              <Users className="h-12 w-12 text-white" />
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
-              {t('header.title')}
-            </h1>
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Hero Section */}
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 mb-6">
+            <Zap className="h-4 w-4 text-blue-400" />
+            <span className="text-sm font-medium text-blue-400">Private Community</span>
           </div>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
+            <span className="bg-gradient-to-r from-white via-blue-100 to-purple-200 bg-clip-text text-transparent">
+              {t('header.title')}
+            </span>
+          </h1>
+          <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
             {t('header.subtitle')}
           </p>
         </div>
 
-        {/* Main Content */}
-        <div className="space-y-8">
-          {/* Benefits Section */}
-          <Card className="p-8 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 dark:from-blue-900/30 dark:via-purple-900/30 dark:to-indigo-900/30 border border-blue-200/50 dark:border-blue-800/30 shadow-lg">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg">
-                <CheckCircle2 className="h-6 w-6 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
-                {t('benefits.title')}
-              </h2>
-            </div>
-            <div className="space-y-4">
-              {benefits.map((benefit, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {t(`benefits.${benefit.key}`)}
-                  </p>
-                </div>
+        {/* Roadmap Section */}
+        <div className="mb-20">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
+              {t('roadmap.title')}
+            </h2>
+            <p className="text-gray-400">
+              {t('roadmap.subtitle')}
+            </p>
+          </div>
+
+          <div className="relative">
+            {/* Vertical line */}
+            <div className="absolute left-6 md:left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-blue-500/50 via-purple-500/50 to-transparent hidden md:block" />
+            
+            <div className="space-y-8 md:space-y-12">
+              {roadmapItems.map((item, index) => (
+                <RoadmapItem
+                  key={index}
+                  item={item}
+                  index={index}
+                  isLeft={index % 2 === 0}
+                />
               ))}
             </div>
-          </Card>
+          </div>
+        </div>
 
-          {/* Pricing Cards Section */}
-          <div className="mt-16">
-            <h2 className="text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-12">
-              {t('pricing.title')}
+        {/* Pricing Section */}
+        <div ref={pricingRef} className="mb-16">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">
+              {tariff?.name || t('pricingSection.title')}
             </h2>
-            <div className="flex flex-wrap justify-center gap-6">
-              {/* 1 Month Subscription */}
-              <div className="w-[280px] h-[450px] relative flex-shrink-0">
-                <ReflectiveCard
-                  overlayColor="rgba(59, 130, 246, 0.05)"
-                  blurStrength={8}
-                  glassDistortion={10}
-                  metalness={0.4}
-                  roughness={0.6}
-                  displacementStrength={20}
-                  noiseScale={1.2}
-                  specularConstant={1.5}
-                  grayscale={0.8}
-                  color="#1e293b"
-                  className="mx-auto dark:text-white"
-                  style={{ width: '280px', height: '450px' }}
-                >
-                  <div className="relative z-10 h-full flex flex-col justify-between p-6 text-gray-900 dark:text-white">
-                    <div className="flex justify-between items-center border-b border-gray-300/30 dark:border-white/30 pb-4 mb-2">
-                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-cyan-500 dark:border-cyan-400 shadow-2xl">
-                        <Sparkles size={14} className="text-cyan-600 dark:text-cyan-400" />
-                        <span className="text-cyan-700 dark:text-cyan-300 font-black">{t('pricing.period1.badge')}</span>
-                      </div>
-                      <Activity className="opacity-90 text-gray-900 dark:text-white" size={18} />
-                    </div>
+            <p className="text-gray-400">
+              {tariff?.description || t('pricingSection.subtitle')}
+            </p>
+          </div>
 
-                    <div className="flex-1 flex flex-col justify-center items-center text-center gap-5">
-                      <div className="w-full">
-                        <div className="mb-6">
-                          <h2 className="text-xl font-bold tracking-[0.05em] m-0 drop-shadow-md">
-                            {t('pricing.period1.periodTitle')}
-                          </h2>
-                          <p className="text-xs tracking-[0.1em] opacity-80 m-0 mt-1">
-                            {t('pricing.subscription')}
-                          </p>
-                        </div>
-                        
-                        <div className="space-y-4">
-                          <div className="border-t border-gray-300/20 dark:border-white/20 pt-4">
-                            <div className="text-[10px] uppercase tracking-[0.15em] opacity-60 mb-2">
-                              {t('pricing.period1.pricePerMonth')}
-                            </div>
-                            <div className="flex items-baseline justify-center gap-1">
-                              <span className="text-3xl font-bold">
-                                {isLoadingPricing ? '...' : getPricingForPeriod(1) ? `$${formatPrice(getPricingForPeriod(1)!.monthlyPrice)}` : t('pricing.period1.monthlyPrice')}
-                              </span>
-                              <span className="text-sm opacity-80">
-                                {t('pricing.period1.period')}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="border-t border-gray-300/20 dark:border-white/20 pt-4">
-                            <div className="text-[10px] uppercase tracking-[0.15em] opacity-60 mb-2">
-                              {t('pricing.period1.totalPrice')}
-                            </div>
-                            <div className="h-[3rem] flex items-center justify-center gap-2">
-                              <div className="text-2xl font-bold">
-                                {isLoadingPricing ? '...' : getPricingForPeriod(1) ? `$${formatPrice(calculateTotal(1, getPricingForPeriod(1)!.monthlyPrice))}` : t('pricing.period1.total')}
-                              </div>
-                              {t('pricing.period1.basePrice') && (
-                                <div className="flex items-center gap-1 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-cyan-500 dark:border-cyan-400 shadow-2xl">
-                                  <Sparkles size={12} className="text-cyan-600 dark:text-cyan-400" />
-                                  <span className="text-cyan-700 dark:text-cyan-300 font-black">{t('pricing.period1.basePrice')}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-center items-center border-t border-gray-300/30 dark:border-white/30 pt-4">
-                      <div className="opacity-50">
-                        <Fingerprint size={24} />
-                      </div>
-                    </div>
-                  </div>
-                </ReflectiveCard>
-              </div>
-
-              {/* 3 Months Subscription */}
-              <div className="w-[280px] h-[450px] relative flex-shrink-0">
-                <ReflectiveCard
-                  overlayColor="rgba(147, 51, 234, 0.05)"
-                  blurStrength={10}
-                  glassDistortion={15}
-                  metalness={0.4}
-                  roughness={0.5}
-                  displacementStrength={25}
-                  noiseScale={1.5}
-                  specularConstant={2.0}
-                  grayscale={0.8}
-                  color="#1e293b"
-                  className="mx-auto dark:text-white"
-                  style={{ width: '280px', height: '450px' }}
-                >
-                  <div className="relative z-10 h-full flex flex-col justify-between p-6 text-gray-900 dark:text-white">
-                    <div className="flex justify-between items-center border-b border-gray-300/30 dark:border-white/30 pb-4 mb-2">
-                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-amber-500 dark:border-amber-400 shadow-2xl">
-                        <Sparkles size={14} className="text-amber-600 dark:text-amber-400" />
-                        <span className="text-amber-700 dark:text-amber-300 font-black">{t('pricing.period3.badge')}</span>
-                      </div>
-                      <Activity className="opacity-90 text-gray-900 dark:text-white" size={18} />
-                    </div>
-
-                    <div className="flex-1 flex flex-col justify-center items-center text-center gap-5">
-                      <div className="w-full">
-                        <div className="mb-6">
-                          <h2 className="text-xl font-bold tracking-[0.05em] m-0 drop-shadow-md">
-                            {t('pricing.period3.periodTitle')}
-                          </h2>
-                          <p className="text-xs tracking-[0.1em] opacity-80 m-0 mt-1">
-                            {t('pricing.subscription')}
-                          </p>
-                        </div>
-                        
-                        <div className="space-y-4">
-                          <div className="border-t border-gray-300/20 dark:border-white/20 pt-4">
-                            <div className="text-[10px] uppercase tracking-[0.15em] opacity-60 mb-2">
-                              {t('pricing.period3.pricePerMonth')}
-                            </div>
-                            <div className="flex items-baseline justify-center gap-1">
-                              <span className="text-3xl font-bold">
-                                {isLoadingPricing ? '...' : getPricingForPeriod(3) ? `$${formatPrice(getPricingForPeriod(3)!.monthlyPrice)}` : t('pricing.period3.monthlyPrice')}
-                              </span>
-                              <span className="text-sm opacity-80">
-                                {t('pricing.period3.period')}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="border-t border-gray-300/20 dark:border-white/20 pt-4">
-                            <div className="text-[10px] uppercase tracking-[0.15em] opacity-60 mb-2">
-                              {t('pricing.period3.totalPrice')}
-                            </div>
-                            <div className="h-[3rem] flex items-center justify-center gap-2">
-                              <div className="text-2xl font-bold">
-                                {isLoadingPricing ? '...' : getPricingForPeriod(3) ? `$${formatPrice(calculateTotal(3, getPricingForPeriod(3)!.monthlyPrice))}` : t('pricing.period3.total')}
-                              </div>
-                              {getPricingForPeriod(3) && calculateSavings(3, getPricingForPeriod(3)!.monthlyPrice) > 0 && (
-                                <div className="flex items-center gap-1 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-amber-500 dark:border-amber-400 shadow-2xl">
-                                  <Sparkles size={12} className="text-amber-600 dark:text-amber-400" />
-                                  <span className="text-amber-700 dark:text-amber-300 font-black">{t('pricing.savingsLabel')} ${formatPrice(calculateSavings(3, getPricingForPeriod(3)!.monthlyPrice))}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-center items-center border-t border-gray-300/30 dark:border-white/30 pt-4">
-                      <div className="opacity-50">
-                        <Fingerprint size={24} />
-                      </div>
-                    </div>
-                  </div>
-                </ReflectiveCard>
-              </div>
-
-              {/* 6 Months Subscription */}
-              <div className="w-[280px] h-[450px] relative flex-shrink-0">
-                <ReflectiveCard
-                  overlayColor="rgba(99, 102, 241, 0.05)"
-                  blurStrength={12}
-                  glassDistortion={20}
-                  metalness={0.4}
-                  roughness={0.4}
-                  displacementStrength={30}
-                  noiseScale={1.8}
-                  specularConstant={2.5}
-                  grayscale={0.8}
-                  color="#1e293b"
-                  className="mx-auto dark:text-white"
-                  style={{ width: '280px', height: '450px' }}
-                >
-                  <div className="relative z-10 h-full flex flex-col justify-between p-6 text-gray-900 dark:text-white">
-                    <div className="flex justify-between items-center border-b border-gray-300/30 dark:border-white/30 pb-4 mb-2">
-                      <div className="flex items-center gap-1.5 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-indigo-500 dark:border-indigo-400 shadow-2xl">
-                        <Sparkles size={14} className="text-indigo-600 dark:text-indigo-400" />
-                        <span className="text-indigo-700 dark:text-indigo-300 font-black">{t('pricing.period6.badge')}</span>
-                      </div>
-                      <Activity className="opacity-90 text-gray-900 dark:text-white" size={18} />
-                    </div>
-
-                    <div className="flex-1 flex flex-col justify-center items-center text-center gap-5">
-                      <div className="w-full">
-                        <div className="mb-6">
-                          <h2 className="text-xl font-bold tracking-[0.05em] m-0 drop-shadow-md">
-                            {t('pricing.period6.periodTitle')}
-                          </h2>
-                          <p className="text-xs tracking-[0.1em] opacity-80 m-0 mt-1">
-                            {t('pricing.subscription')}
-                          </p>
-                        </div>
-                        
-                        <div className="space-y-4">
-                          <div className="border-t border-gray-300/20 dark:border-white/20 pt-4">
-                            <div className="text-[10px] uppercase tracking-[0.15em] opacity-60 mb-2">
-                              {t('pricing.period6.pricePerMonth')}
-                            </div>
-                            <div className="flex items-baseline justify-center gap-1">
-                              <span className="text-3xl font-bold">
-                                {isLoadingPricing ? '...' : getPricingForPeriod(6) ? `$${formatPrice(getPricingForPeriod(6)!.monthlyPrice)}` : t('pricing.period6.monthlyPrice')}
-                              </span>
-                              <span className="text-sm opacity-80">
-                                {t('pricing.period6.period')}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="border-t border-gray-300/20 dark:border-white/20 pt-4">
-                            <div className="text-[10px] uppercase tracking-[0.15em] opacity-60 mb-2">
-                              {t('pricing.period6.totalPrice')}
-                            </div>
-                            <div className="h-[3rem] flex items-center justify-center gap-2">
-                              <div className="text-2xl font-bold">
-                                {isLoadingPricing ? '...' : getPricingForPeriod(6) ? `$${formatPrice(calculateTotal(6, getPricingForPeriod(6)!.monthlyPrice))}` : t('pricing.period6.total')}
-                              </div>
-                              {getPricingForPeriod(6) && calculateSavings(6, getPricingForPeriod(6)!.monthlyPrice) > 0 && (
-                                <div className="flex items-center gap-1 text-[10px] font-extrabold tracking-[0.15em] px-4 py-2 bg-white dark:bg-gray-900 rounded-lg border-2 border-indigo-500 dark:border-indigo-400 shadow-2xl">
-                                  <Sparkles size={12} className="text-indigo-600 dark:text-indigo-400" />
-                                  <span className="text-indigo-700 dark:text-indigo-300 font-black">{t('pricing.savingsLabel')} ${formatPrice(calculateSavings(6, getPricingForPeriod(6)!.monthlyPrice))}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-center items-center border-t border-gray-300/30 dark:border-white/30 pt-4">
-                      <div className="opacity-50">
-                        <Fingerprint size={24} />
-                      </div>
-                    </div>
-                  </div>
-                </ReflectiveCard>
-              </div>
+          {displayPricing.length > 0 ? (
+            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6">
+              {displayPricing.map((item, index) => (
+                <PricingCard
+                  key={item.id}
+                  data={item}
+                  isLoading={isLoadingPricing}
+                  basePrice={basePrice}
+                  isVisible={pricingVisible}
+                  index={index}
+                  t={t}
+                />
+              ))}
             </div>
-          </div>
+          ) : (
+            <div className="text-center text-gray-500 py-12">
+              {isLoadingPricing ? 'Загрузка...' : 'Нет доступных тарифов'}
+            </div>
+          )}
+        </div>
 
-          {/* Contact Section */}
-          <div className="mt-16">
-            <Card className="p-8 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 dark:from-blue-900/30 dark:via-purple-900/30 dark:to-indigo-900/30 border border-blue-200/50 dark:border-blue-800/30 shadow-lg">
-              <div className="text-center mb-6">
-                <div className="flex items-center justify-center gap-3 mb-4">
-                  <div className="p-3 bg-blue-600 dark:bg-blue-500 rounded-full">
-                    <MessageCircle className="h-6 w-6 text-white" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {t('contact.title')}
-                  </h2>
-                </div>
-                <p className="text-gray-700 dark:text-gray-300 leading-relaxed max-w-2xl mx-auto">
-                  {t('contact.description')}{' '}
-                  <Link
-                    href="/private-community/rules"
-                    className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 underline font-medium transition-colors"
-                  >
-                    {t('contact.rulesLink')}
-                  </Link>
-                  {' '}{t('contact.descriptionEnd')}
-                </p>
-              </div>
-              
-              <div className="flex flex-wrap justify-center items-center gap-4 mt-8">
-                <a
-                  href="https://t.me/acycas"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                >
-                  <MessageCircle className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                  <span>@acycas</span>
-                  <ExternalLink className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
-                </a>
-                <a
-                  href="https://t.me/kirjeyy"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-xl transition-all duration-300 font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                >
-                  <MessageCircle className="h-5 w-5 group-hover:scale-110 transition-transform" />
-                  <span>@kirjeyy</span>
-                  <ExternalLink className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
-                </a>
-              </div>
-            </Card>
-          </div>
+        {/* CTA */}
+        <div 
+          className="text-center"
+          style={{
+            opacity: pricingVisible ? 1 : 0,
+            transform: pricingVisible ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s',
+          }}
+        >
+          <a
+            href={TELEGRAM_BOT_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="
+              inline-flex items-center gap-3
+              px-8 py-4
+              bg-gradient-to-r from-blue-600 to-purple-600 
+              hover:from-blue-500 hover:to-purple-500
+              text-white text-lg font-semibold 
+              rounded-2xl
+              shadow-lg shadow-blue-500/20
+              hover:shadow-xl hover:shadow-blue-500/30
+              hover:-translate-y-1
+              transition-all duration-300
+            "
+          >
+            <Send className="h-5 w-5" />
+            {t('cta.button')}
+          </a>
+          <p className="mt-4 text-sm text-gray-500">
+            {t('cta.hint')}
+          </p>
+          
+          {/* Terms link */}
+          <Link
+            href="/private-community/rules"
+            className="inline-flex items-center gap-2 mt-6 text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+            {t('cta.terms')}
+          </Link>
         </div>
       </div>
     </Layout>
   );
 }
-

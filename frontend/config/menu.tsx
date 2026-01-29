@@ -1,4 +1,4 @@
-import { BookOpen, DollarSign, Users, LucideIcon } from 'lucide-react';
+import { Users, LucideIcon } from 'lucide-react';
 
 export interface MenuItem {
   id: string;
@@ -25,18 +25,6 @@ export const menuConfig: MenuCategory[] = [
         href: '/private-community',
         icon: Users,
         isNew: true
-      },
-      {
-        id: 'about-afina-dao',
-        translationKey: 'aboutAfinaDAO',
-        href: '/about',
-        icon: BookOpen
-      },
-      {
-        id: 'pricing',
-        translationKey: 'pricing',
-        href: '/pricing',
-        icon: DollarSign
       }
     ]
   }

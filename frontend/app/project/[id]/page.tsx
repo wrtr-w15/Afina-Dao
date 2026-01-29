@@ -9,12 +9,11 @@ import { Badge } from '@/components/ui/Badge';
 import { 
   ArrowLeft, 
   Globe,
-  Link as LinkIcon,
   Calendar,
   Send
 } from 'lucide-react';
 import DOMPurify from 'isomorphic-dompurify';
-import { Project, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS } from '@/types/project';
+import { Project, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, parseMarkdownSections, MarkdownSection } from '@/types/project';
 import { getProjectById } from '@/lib/projects';
 
 export default function ProjectPage() {
@@ -23,87 +22,37 @@ export default function ProjectPage() {
   const locale = useLocale();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeBlock, setActiveBlock] = useState<number>(0);
+  const [activeSection, setActiveSection] = useState<number>(0);
   const [isMobile, setIsMobile] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
 
-  // Отслеживание изменения activeBlock для отладки
-  useEffect(() => {
-    console.log(`📍 Active block changed to: ${activeBlock}`);
-  }, [activeBlock]);
-
-  // Функция для получения переведенного контента проекта
-  const getTranslatedProjectContent = () => {
-    if (!project) return { name: '', description: '' };
+  // Get translated content
+  const getTranslatedContent = () => {
+    if (!project) return { name: '', description: '', content: '' };
     
-    // Если нет переводов вообще, используем базовые значения
     if (!project.translations || project.translations.length === 0) {
       return {
         name: project.name || '',
-        description: project.description || ''
+        description: project.description || '',
+        content: project.content || ''
       };
     }
     
-    // Ищем перевод для текущего языка
     const translation = project.translations.find((t: any) => t.locale === locale);
     
-    // Если перевод найден, используем его (с fallback на базовые значения)
     if (translation) {
       return {
         name: translation.name || project.name || '',
-        description: translation.description || project.description || ''
+        description: translation.description || project.description || '',
+        content: translation.content || project.content || ''
       };
     }
     
-    // Если перевода нет, используем базовые значения
     return {
       name: project.name || '',
-      description: project.description || ''
-    };
-  };
-
-  // Функция для получения переведенного контента блока
-  const getTranslatedBlockContent = (block: any) => {
-    console.log(`Getting translation for block ${block.id}, locale: ${locale}`, {
-      hasTranslations: !!block.translations,
-      translationsCount: block.translations?.length || 0,
-      availableLocales: block.translations?.map((t: any) => t.locale) || [],
-      currentLocale: locale
-    });
-    
-    // Если нет переводов вообще, используем базовые значения
-    if (!block.translations || block.translations.length === 0) {
-      console.log(`→ Using base values for block ${block.id}`);
-      return {
-        title: block.title || '',
-        content: block.content || '',
-        gifCaption: block.gifCaption || ''
-      };
-    }
-    
-    // Ищем перевод для текущего языка
-    const translation = block.translations.find((t: any) => t.locale === locale);
-    
-    // Если перевод найден, используем его
-    if (translation) {
-      console.log(`→ Found translation for block ${block.id}, locale ${locale}:`, {
-        title: translation.title,
-        contentLength: translation.content?.length || 0
-      });
-      return {
-        title: translation.title || block.title || '',
-        content: translation.content || block.content || '',
-        gifCaption: translation.gifCaption || block.gifCaption || ''
-      };
-    }
-    
-    // Если перевода нет, используем базовые значения
-    console.log(`→ No translation found for block ${block.id}, locale ${locale}, using base values`);
-    return {
-      title: block.title || '',
-      content: block.content || '',
-      gifCaption: block.gifCaption || ''
+      description: project.description || '',
+      content: project.content || ''
     };
   };
 
@@ -124,20 +73,6 @@ export default function ProjectPage() {
       try {
         const projectId = params.id as string;
         const foundProject = await getProjectById(projectId);
-        
-        console.log('Project loaded:', {
-          id: foundProject?.id,
-          name: foundProject?.name,
-          translationsCount: foundProject?.translations?.length || 0,
-          translations: foundProject?.translations,
-          blocksCount: foundProject?.blocks?.length || 0,
-          blocks: foundProject?.blocks?.map((b: any) => ({
-            id: b.id,
-            title: b.title,
-            translationsCount: b.translations?.length || 0
-          }))
-        });
-        
         setProject(foundProject);
       } catch (error) {
         console.error('Error loading project:', error);
@@ -149,56 +84,40 @@ export default function ProjectPage() {
     loadProject();
   }, [params.id]);
 
-  // Отслеживание активного блока при прокрутке
+  // Parse sections from content
+  const translatedContent = getTranslatedContent();
+  const sections: MarkdownSection[] = parseMarkdownSections(translatedContent.content);
+
+  // Track active section on scroll
   useEffect(() => {
-    if (!project?.blocks || project.blocks.length === 0) return;
+    if (sections.length === 0) return;
 
     const handleScroll = () => {
-      // Игнорируем события скролла во время программной прокрутки
-      if (isScrolling) {
-        console.log('Skipping scroll handler - programmatic scroll in progress');
-        return;
-      }
+      if (isScrolling) return;
 
-      const blocks = project.blocks
-        .map((_, index) => document.getElementById(`block-${index}`))
+      const sectionElements = sections
+        .map((_, index) => document.getElementById(`section-${index}`))
         .filter((el): el is HTMLElement => el !== null);
 
-      if (blocks.length === 0) {
-        console.log('No blocks found in DOM');
-        return;
-      }
+      if (sectionElements.length === 0) return;
 
       const scrollPosition = window.scrollY + 200;
 
-      console.log('Scroll check:', {
-        scrollY: window.scrollY,
-        scrollPosition,
-        blocksCount: blocks.length,
-        blockPositions: blocks.map((b, i) => ({ index: i, offsetTop: b.offsetTop }))
-      });
-
-      // Проходим блоки от последнего к первому
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        const block = blocks[i];
-        if (block && block.offsetTop <= scrollPosition) {
-          console.log(`→ Setting active block: ${i}`);
-          setActiveBlock(i);
+      for (let i = sectionElements.length - 1; i >= 0; i--) {
+        const element = sectionElements[i];
+        if (element && element.offsetTop <= scrollPosition) {
+          setActiveSection(i);
           return;
         }
       }
       
-      // Если ни один блок не прошёл проверку, ставим первый активным
-      console.log('→ Setting active block: 0 (default)');
-      setActiveBlock(0);
+      setActiveSection(0);
     };
 
-    // Вызываем сразу при монтировании
     handleScroll();
-    
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [project, locale, isScrolling]); // Добавили isScrolling в зависимости
+  }, [sections, isScrolling]);
 
   if (loading) {
     return (
@@ -208,7 +127,7 @@ export default function ProjectPage() {
         showSidebar={true}
       >
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500 dark:text-gray-400">Загрузка...</div>
+          <div className="text-gray-400">Загрузка...</div>
         </div>
       </Layout>
     );
@@ -222,10 +141,10 @@ export default function ProjectPage() {
         showSidebar={true}
       >
         <div className="text-center py-12">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+          <h1 className="text-2xl font-bold text-white mb-4">
             Проект не найден
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-gray-400 mb-6">
             Запрашиваемый проект не существует или был удален
           </p>
           <Button onClick={() => router.push('/')}>
@@ -241,216 +160,173 @@ export default function ProjectPage() {
     return new Date(dateString).toLocaleDateString('ru-RU');
   };
 
-  // Функция для плавной прокрутки к блоку
-  const scrollToBlock = (index: number) => {
-    console.log(`🎯 Manual scroll to block ${index}`);
-    console.log(`   Current activeBlock: ${activeBlock}`);
-    
-    // Устанавливаем флаг программной прокрутки
+  // Scroll to section
+  const scrollToSection = (index: number) => {
     setIsScrolling(true);
-    console.log(`   isScrolling set to: true`);
+    setActiveSection(index);
     
-    // Сразу устанавливаем активный блок
-    setActiveBlock(index);
-    console.log(`   activeBlock set to: ${index}`);
-    
-    const element = document.getElementById(`block-${index}`);
+    const element = document.getElementById(`section-${index}`);
     if (element) {
-      console.log(`   ✓ Element found: block-${index}`);
       element.scrollIntoView({ 
         behavior: 'smooth',
         block: 'start'
       });
-      console.log(`   ✓ scrollIntoView called`);
       
-      // Сбрасываем флаг через 1 секунду (время плавной прокрутки)
       setTimeout(() => {
-        console.log('✓ Programmatic scroll completed, re-enabling scroll handler');
         setIsScrolling(false);
       }, 1000);
     } else {
-      console.error(`   ✗ Element NOT found: block-${index}`);
-      // Если элемент не найден, сразу сбрасываем флаг
       setIsScrolling(false);
     }
   };
 
-  // Функция для рендеринга Markdown (простая версия)
-  // Безопасный рендеринг Markdown с санитизацией HTML
+  // Render Markdown content
   const renderMarkdown = (content: string) => {
     const html = content
-      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
-      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mb-3">$1</h2>')
-      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-medium mb-2">$1</h3>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
+      .replace(/^# (.*$)/gim, '<h1 class="text-3xl font-bold text-white mb-6">$1</h1>')
+      .replace(/^## (.*$)/gim, '<h2 class="text-2xl font-semibold text-white mt-8 mb-4">$1</h2>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
-      .replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
-      .replace(/\n\n/g, '</p><p class="mb-4">')
+      .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded text-blue-300 text-sm">$1</code>')
+      .replace(/^- (.*$)/gim, '<li class="ml-4 text-gray-300 mb-1">• $1</li>')
+      .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 text-gray-300 mb-1">$1</li>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg max-w-full my-4" />')
+      .replace(/\n\n/g, '</p><p class="mb-4 text-gray-300">')
       .replace(/\n/g, '<br>');
     
-    // Санитизация HTML для предотвращения XSS
-    return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'li', 'p', 'br'],
-      ALLOWED_ATTR: ['class'],
-      ALLOW_DATA_ATTR: false
+    return DOMPurify.sanitize(`<p class="mb-4 text-gray-300">${html}</p>`, {
+      ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'li', 'p', 'br', 'code', 'a', 'img'],
+      ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt']
     });
   };
 
-  const translatedProject = getTranslatedProjectContent();
-
   return (
     <Layout 
-      title={`${translatedProject.name} - Afina DAO Wiki`}
-      description={translatedProject.description}
+      title={`${translatedContent.name} - Afina DAO Wiki`}
+      description={translatedContent.description}
       showSidebar={true}
     >
       <div className="space-y-8">
-        {/* Банер проекта - на всю ширину */}
+        {/* Project Banner */}
         {project.image && (
           <div className="relative w-full h-64 md:h-80 rounded-lg overflow-hidden">
             <img 
               src={project.image} 
-              alt={`Баннер ${translatedProject.name}`}
+              alt={`Баннер ${translatedContent.name}`}
               className="w-full h-full object-cover"
             />
           </div>
         )}
 
-        {/* Заголовок - центрированный */}
+        {/* Header */}
         <div className="mb-8 max-w-7xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-            {translatedProject.name}
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            {translatedContent.name}
           </h1>
           <div className="flex items-center gap-4 mb-4">
             <Badge className={PROJECT_STATUS_COLORS[project.status]}>
               {PROJECT_STATUS_LABELS[project.status]}
             </Badge>
-            <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex items-center text-sm text-gray-400">
               <Calendar className="h-4 w-4 mr-1" />
               Создан: {formatDate(project.createdAt)}
             </div>
           </div>
         </div>
 
-        {/* Основной контент с сайдбаром - центрированный */}
+        {/* Main Content with Sidebar */}
         <div className="flex gap-8 max-w-7xl mx-auto">
-          {/* Основной контент - центрированный */}
+          {/* Main Content */}
           <div className="flex-1 max-w-4xl pr-8">
             <div className="space-y-8">
-              {/* Описание проекта */}
-              {translatedProject.description && (
-                <div className="border-b border-gray-200 dark:border-gray-700 pb-8">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              {/* Description */}
+              {translatedContent.description && (
+                <div className="border-b border-white/10 pb-8">
+                  <h2 className="text-2xl font-bold text-white mb-4">
                     Описание
                   </h2>
-                  <div className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {translatedProject.description}
+                  <div className="text-lg text-gray-300 leading-relaxed">
+                    {translatedContent.description}
                   </div>
                 </div>
               )}
               
-              {/* Блоки проекта */}
-              {project.blocks && project.blocks.length > 0 && (
+              {/* Markdown Sections */}
+              {sections.length > 0 && (
                 <div className="space-y-8">
-                {project.blocks.map((block, index) => {
-                  const translatedBlock = getTranslatedBlockContent(block);
-                  return (
-                  <div key={block.id} id={`block-${index}`} className="space-y-4 scroll-mt-20">
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {translatedBlock.title}
-                    </h2>
-                    
-                    {translatedBlock.content && (
-                      <div 
-                        className="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
-                        dangerouslySetInnerHTML={{ 
-                          __html: `<p class="mb-4">${renderMarkdown(translatedBlock.content)}</p>` 
-                        }}
-                      />
-                    )}
-                    
-                    {block.gifUrl && (
-                      <div className="space-y-3">
-                        <img 
-                          src={block.gifUrl} 
-                          alt={`GIF для ${translatedBlock.title}`}
-                          className="w-full max-w-4xl rounded-lg"
+                  {sections.map((section, index) => (
+                    <div 
+                      key={section.id} 
+                      id={`section-${index}`} 
+                      className="scroll-mt-20"
+                    >
+                      <h2 className="text-2xl font-bold text-white mb-4 pt-4 border-t border-white/10">
+                        {section.title}
+                      </h2>
+                      
+                      {section.content && (
+                        <div 
+                          className="prose prose-invert max-w-none"
+                          dangerouslySetInnerHTML={{ 
+                            __html: renderMarkdown(section.content) 
+                          }}
                         />
-                        {translatedBlock.gifCaption && (
-                          <div className="text-center">
-                            <p className="text-base text-gray-600 dark:text-gray-300 italic font-medium bg-gray-50 dark:bg-gray-800 py-2 px-4 rounded-lg">
-                              {translatedBlock.gifCaption}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {block.links && block.links.length > 0 && (
-                      <div className="space-y-2">
-                        {block.links.map((link) => (
-                          <a
-                            key={link.id}
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                          >
-                            <LinkIcon className="h-4 w-4" />
-                            {link.title}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )})}
+                      )}
+                    </div>
+                  ))}
                 </div>
+              )}
+
+              {/* If no sections, show raw content */}
+              {sections.length === 0 && translatedContent.content && (
+                <div 
+                  className="prose prose-invert max-w-none"
+                  dangerouslySetInnerHTML={{ 
+                    __html: renderMarkdown(translatedContent.content) 
+                  }}
+                />
               )}
             </div>
           </div>
 
-          {/* Правый сайдбар - скрывается на мобильных устройствах */}
-          {!isMobile && (
+          {/* Right Sidebar - Navigation */}
+          {!isMobile && sections.length > 0 && (
             <div className={`flex-shrink-0 ${isCompact ? 'w-48' : 'w-80'}`}>
               <div className="sticky top-24 space-y-4">
-                {project.blocks && project.blocks.length > 0 && (
-                  <div className="bg-white dark:bg-gray-800 shadow-lg p-2 rounded-lg">
-                    <nav className="px-1 pb-1 space-y-0.5">
-                      {project.blocks.map((block, index) => {
-                        const translatedBlock = getTranslatedBlockContent(block);
-                        const blockTitle = translatedBlock.title;
-                        return (
-                        <button
-                          key={block.id}
-                          onClick={() => scrollToBlock(index)}
-                          className={`w-full text-left px-2 py-2.5 ${isCompact ? 'text-xs' : 'text-xs'} rounded transition-colors ${
-                            activeBlock === index
-                              ? 'text-blue-600 dark:text-blue-400 font-medium'
-                              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                          title={isCompact ? blockTitle : undefined}
-                        >
-                          {isCompact ? (
-                            <span className="truncate block">
-                              {blockTitle.length > 20 ? blockTitle.substring(0, 20) + '...' : blockTitle}
-                            </span>
-                          ) : (
-                            blockTitle
-                          )}
-                        </button>
-                      )})}
-                    </nav>
-                  </div>
-                )}
+                <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-2 rounded-lg">
+                  <nav className="px-1 pb-1 space-y-0.5">
+                    {sections.map((section, index) => (
+                      <button
+                        key={section.id}
+                        onClick={() => scrollToSection(index)}
+                        className={`w-full text-left px-2 py-2.5 text-xs rounded transition-colors ${
+                          activeSection === index
+                            ? 'text-blue-400 font-medium bg-blue-500/10'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                        title={isCompact ? section.title : undefined}
+                      >
+                        {isCompact ? (
+                          <span className="truncate block">
+                            {section.title.length > 20 ? section.title.substring(0, 20) + '...' : section.title}
+                          </span>
+                        ) : (
+                          section.title
+                        )}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Ссылки проекта - центрированные */}
+        {/* Project Links */}
         {(project.website || project.telegramPost) && (
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-8 max-w-7xl mx-auto">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+          <div className="border-t border-white/10 pt-8 max-w-7xl mx-auto">
+            <h2 className="text-xl font-semibold text-white mb-4">
               Ссылки проекта
             </h2>
             
@@ -460,7 +336,7 @@ export default function ProjectPage() {
                   href={project.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  className="inline-flex items-center justify-center w-12 h-12 bg-white/5 text-gray-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
                   title="Веб-сайт"
                 >
                   <Globe className="h-5 w-5" />
@@ -472,7 +348,7 @@ export default function ProjectPage() {
                   href={project.telegramPost}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  className="inline-flex items-center justify-center w-12 h-12 bg-white/5 text-gray-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
                   title="Telegram Post"
                 >
                   <Send className="h-5 w-5" />

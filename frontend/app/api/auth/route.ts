@@ -9,6 +9,7 @@ import { applyRateLimit } from '@/lib/security-middleware';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
+const IS_DEV_MODE = process.env.NODE_ENV === 'development';
 
 // POST /api/auth - создание запроса на логин
 export async function POST(request: NextRequest) {
@@ -37,6 +38,41 @@ export async function POST(request: NextRequest) {
     // Получаем информацию о пользователе
     const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
+    
+    // DEV MODE: Skip Telegram confirmation in development
+    if (IS_DEV_MODE) {
+      console.log('🔧 DEV MODE: Skipping Telegram confirmation');
+      
+      // Create session directly
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      const sessionData = {
+        token: sessionToken,
+        timestamp: Date.now(),
+        ip: ip,
+        userAgent: userAgent
+      };
+
+      if (!SESSION_SECRET) {
+        console.error('SESSION_SECRET not configured');
+        return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+      }
+      
+      const encryptedData = encryptSessionData(sessionData, SESSION_SECRET);
+      
+      const cookieStore = await cookies();
+      cookieStore.set('admin-session', encryptedData, {
+        httpOnly: true,
+        secure: false, // Dev mode
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        devMode: true,
+        message: 'DEV MODE: Logged in without Telegram confirmation'
+      });
+    }
     
     // Генерируем уникальный ID для запроса
     const requestId = crypto.randomUUID();

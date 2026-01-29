@@ -12,21 +12,16 @@ import { Alert } from '../../../../components/ui/Alert';
 import { 
   ArrowLeft, 
   Save, 
-  X,
-  Plus,
-  Calendar,
-  Users,
-  Code,
-  DollarSign,
   Globe,
-  Github,
-  Image
+  Image,
+  Eye,
+  Edit3
 } from 'lucide-react';
-import { CreateProjectData, ProjectStatus, PROJECT_STATUS_LABELS } from '../../../../types/project';
+import { CreateProjectData, PROJECT_STATUS_LABELS, parseMarkdownSections } from '../../../../types/project';
 import { Category } from '../../../../types/category';
-import { ProjectBlockEditor } from '../../../../components/ui/ProjectBlockEditor';
 import { createProject } from '../../../../lib/projects';
 import { getCategories } from '../../../../lib/categories';
+import DOMPurify from 'isomorphic-dompurify';
 
 export default function CreateProjectPage() {
   const router = useRouter();
@@ -34,11 +29,13 @@ export default function CreateProjectPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
   
   const [formData, setFormData] = useState<CreateProjectData>({
     name: '',
     sidebarName: '',
     description: '',
+    content: '',
     status: 'draft',
     category: '',
     startDate: '',
@@ -46,8 +43,7 @@ export default function CreateProjectPage() {
     budget: undefined,
     website: '',
     telegramPost: '',
-    image: '',
-    blocks: []
+    image: ''
   });
 
   useEffect(() => {
@@ -58,18 +54,13 @@ export default function CreateProjectPage() {
     try {
       const categoriesData = await getCategories();
       setCategories(categoriesData);
-      // Фильтруем только активные категории для установки значения по умолчанию
       const activeCategories = categoriesData.filter(cat => cat.isActive);
       
-      // Устанавливаем первую активную категорию по умолчанию, если нет выбранной категории
-      // или если выбранная категория больше не активна
       if (activeCategories.length > 0) {
         setFormData(prev => {
           const currentCategory = prev.category;
-          // Проверяем, существует ли текущая категория среди активных
           const categoryExists = activeCategories.some(cat => cat.name === currentCategory);
           
-          // Если категория не выбрана или текущая категория не активна, выбираем первую активную
           if (!currentCategory || !categoryExists) {
             return {
               ...prev,
@@ -84,7 +75,6 @@ export default function CreateProjectPage() {
       setError('Ошибка загрузки категорий. Проверьте подключение к серверу.');
     }
   };
-
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -101,6 +91,30 @@ export default function CreateProjectPage() {
     }));
   };
 
+  // Render Markdown to HTML
+  const renderMarkdown = (content: string) => {
+    const html = content
+      .replace(/^### (.*$)/gim, '<h3 class="text-xl font-semibold text-white mt-8 mb-4 pt-4 border-t border-white/10">$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2 class="text-2xl font-bold text-white mt-6 mb-4">$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1 class="text-3xl font-bold text-white mb-4">$1</h1>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+      .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded text-blue-300">$1</code>')
+      .replace(/^- (.*$)/gim, '<li class="ml-4 text-gray-300">• $1</li>')
+      .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 text-gray-300">$1</li>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg max-w-full my-4" />')
+      .replace(/\n\n/g, '</p><p class="mb-4 text-gray-300">')
+      .replace(/\n/g, '<br>');
+    
+    return DOMPurify.sanitize(`<p class="mb-4 text-gray-300">${html}</p>`, {
+      ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'li', 'p', 'br', 'code', 'a', 'img'],
+      ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt']
+    });
+  };
+
+  // Get preview sections
+  const previewSections = parseMarkdownSections(formData.content || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +122,6 @@ export default function CreateProjectPage() {
     setError('');
 
     try {
-      // Валидация
       if (!formData.name.trim()) {
         throw new Error('Название проекта обязательно');
       }
@@ -126,11 +139,11 @@ export default function CreateProjectPage() {
         throw new Error('Выберите категорию проекта');
       }
 
-      // Очистка данных перед отправкой - создаем полностью новые объекты
       const cleanFormData = {
         name: String(formData.name || ''),
         sidebarName: String(formData.sidebarName || ''),
         description: String(formData.description || ''),
+        content: String(formData.content || ''),
         status: typeof formData.status === 'string' ? formData.status : 'draft',
         category: String(formData.category || ''),
         startDate: String(formData.startDate || ''),
@@ -139,38 +152,9 @@ export default function CreateProjectPage() {
         website: formData.website ? String(formData.website) : undefined,
         telegramPost: formData.telegramPost ? String(formData.telegramPost) : undefined,
         image: formData.image ? String(formData.image) : undefined,
-        blocks: Array.isArray(formData.blocks) ? formData.blocks
-          .filter(block => block && typeof block === 'object' && block.id)
-          .map(block => ({
-            id: String(block.id),
-            title: String(block.title || ''),
-            content: String(block.content || ''),
-            gifUrl: block.gifUrl ? String(block.gifUrl) : undefined,
-            links: Array.isArray(block.links) ? block.links
-              .filter(link => link && typeof link === 'object' && link.id)
-              .map(link => ({
-                id: String(link.id),
-                title: String(link.title || ''),
-                url: String(link.url || ''),
-                type: (link.type === 'website' || link.type === 'github' || link.type === 'documentation' || link.type === 'demo') ? link.type as 'website' | 'github' | 'documentation' | 'demo' : 'other'
-              })) : []
-          })) : []
+        blocks: [] // Empty blocks for backward compatibility
       };
 
-      // Отладочная информация
-      console.log('Form data before cleaning:', formData);
-      console.log('Clean form data:', cleanFormData);
-      
-      // Проверяем, что cleanFormData не содержит циклических ссылок
-      try {
-        JSON.stringify(cleanFormData);
-        console.log('✅ cleanFormData is serializable');
-      } catch (jsonError) {
-        console.error('❌ cleanFormData contains circular references:', jsonError);
-        throw new Error('Form data contains circular references');
-      }
-
-      // Создание проекта
       await createProject(cleanFormData as any);
       
       setSuccess(true);
@@ -201,10 +185,10 @@ export default function CreateProjectPage() {
             Назад
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <h1 className="text-3xl font-bold text-white">
               Создание проекта
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
+            <p className="text-gray-400 mt-2">
               Заполните информацию о новом проекте
             </p>
           </div>
@@ -225,8 +209,8 @@ export default function CreateProjectPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Основная информация */}
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            <Card className="p-6 bg-white/5 border-white/10">
+              <h2 className="text-xl font-semibold text-white mb-4">
                 Основная информация
               </h2>
               
@@ -238,6 +222,7 @@ export default function CreateProjectPage() {
                   onChange={handleInputChange}
                   placeholder="Введите название проекта"
                   required
+                  className="bg-white/5 border-white/10 text-white"
                 />
 
                 <Input
@@ -247,16 +232,18 @@ export default function CreateProjectPage() {
                   onChange={handleInputChange}
                   placeholder="Краткое название для отображения в сайдбаре"
                   required
+                  className="bg-white/5 border-white/10 text-white"
                 />
 
                 <Textarea
-                  label="Описание *"
+                  label="Краткое описание *"
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
-                  placeholder="Опишите проект"
-                  rows={4}
+                  placeholder="Краткое описание проекта (будет показано в начале страницы)"
+                  rows={3}
                   required
+                  className="bg-white/5 border-white/10 text-white"
                 />
 
                 <div className="grid grid-cols-2 gap-4">
@@ -284,59 +271,118 @@ export default function CreateProjectPage() {
                     required
                   />
                 </div>
-
               </div>
             </Card>
 
+            {/* Ссылки */}
+            <Card className="p-6 bg-white/5 border-white/10">
+              <h2 className="text-xl font-semibold text-white mb-4">
+                Ссылки
+              </h2>
+              
+              <div className="space-y-4">
+                <Input
+                  label="Веб-сайт"
+                  name="website"
+                  value={formData.website}
+                  onChange={handleInputChange}
+                  placeholder="https://example.com"
+                  leftIcon={<Globe className="h-4 w-4" />}
+                  className="bg-white/5 border-white/10 text-white"
+                />
+
+                <Input
+                  label="Telegram Post"
+                  name="telegramPost"
+                  value={formData.telegramPost}
+                  onChange={handleInputChange}
+                  placeholder="https://t.me/afina_dao/123"
+                  leftIcon={<Globe className="h-4 w-4" />}
+                  className="bg-white/5 border-white/10 text-white"
+                />
+
+                <Input
+                  label="Изображение (баннер)"
+                  name="image"
+                  value={formData.image}
+                  onChange={handleInputChange}
+                  placeholder="https://example.com/image.jpg"
+                  leftIcon={<Image className="h-4 w-4" />}
+                  className="bg-white/5 border-white/10 text-white"
+                />
+              </div>
+            </Card>
           </div>
 
-
-
-          {/* Блоки описания */}
-          <Card className="p-6">
-            <ProjectBlockEditor
-              blocks={formData.blocks || []}
-              onChange={(blocks) => {
-                // Обновляем блоки без автоматического сохранения
-                setFormData(prev => ({ ...prev, blocks: blocks || [] }));
-              }}
-            />
-          </Card>
-
-          {/* Ссылки */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Ссылки
-            </h2>
-            
-            <div className="space-y-4">
-              <Input
-                label="Веб-сайт"
-                name="website"
-                value={formData.website}
-                onChange={handleInputChange}
-                placeholder="https://example.com"
-                leftIcon={<Globe className="h-4 w-4" />}
-              />
-
-              <Input
-                label="Telegram Post"
-                name="telegramPost"
-                value={formData.telegramPost}
-                onChange={handleInputChange}
-                placeholder="https://t.me/afina_dao/123"
-                leftIcon={<Globe className="h-4 w-4" />}
-              />
-
-              <Input
-                label="Изображение"
-                name="image"
-                value={formData.image}
-                onChange={handleInputChange}
-                placeholder="https://example.com/image.jpg"
-                leftIcon={<Image className="h-4 w-4" />}
-              />
+          {/* Markdown Content */}
+          <Card className="p-6 bg-white/5 border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-white">
+                  Содержание проекта (Markdown)
+                </h2>
+                <p className="text-sm text-gray-400 mt-1">
+                  Используйте <code className="bg-white/10 px-1.5 py-0.5 rounded">### Заголовок</code> для создания разделов навигации
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowPreview(!showPreview)}
+                className="flex items-center gap-2"
+              >
+                {showPreview ? <Edit3 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPreview ? 'Редактор' : 'Превью'}
+              </Button>
             </div>
+
+            {showPreview ? (
+              <div className="space-y-4">
+                {/* Navigation preview */}
+                {previewSections.length > 0 && (
+                  <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                    <h3 className="text-sm font-medium text-gray-400 mb-2">Навигация (разделы):</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {previewSections.map((section, idx) => (
+                        <span key={idx} className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm">
+                          {section.title}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Content preview */}
+                <div 
+                  className="prose prose-invert max-w-none p-6 bg-white/5 rounded-lg border border-white/10 min-h-[400px]"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(formData.content || '*Введите содержание...*') }}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Textarea
+                  name="content"
+                  value={formData.content}
+                  onChange={handleInputChange}
+                  placeholder={`### Введение
+Описание первого раздела...
+
+### Установка
+Шаги установки...
+
+### Использование
+Как использовать проект...
+
+### FAQ
+Часто задаваемые вопросы...`}
+                  rows={20}
+                  className="bg-white/5 border-white/10 text-white font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500">
+                  Поддерживается: ### заголовки (для навигации), **жирный**, *курсив*, `код`, списки (- или 1.), [ссылки](url), ![изображения](url)
+                </p>
+              </div>
+            )}
           </Card>
 
           {/* Actions */}

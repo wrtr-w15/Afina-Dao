@@ -93,6 +93,7 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
       name: data.name,
       sidebarName: data.sidebarName,
       description: data.description,
+      content: data.content || '',
       status: typeof data.status === 'string' ? data.status : 'draft',
       category: data.category,
       startDate: data.startDate,
@@ -101,7 +102,8 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
       website: data.website,
       telegramPost: data.telegramPost,
       image: data.image,
-      blocks: data.blocks || []
+      blocks: data.blocks || [],
+      translations: data.translations || []
     });
 
     // Отладочная информация
@@ -145,7 +147,6 @@ export const createProject = async (data: CreateProjectData): Promise<Project> =
 export const updateProject = async (id: string, data: any): Promise<Project | null> => {
   try {
     // Создаем чистый объект без циклических ссылок
-    // Блоки НЕ включаем, так как они сохраняются через отдельное API
     const cleanData = {
       sidebarName: data.sidebarName,
       status: data.status,
@@ -153,6 +154,7 @@ export const updateProject = async (id: string, data: any): Promise<Project | nu
       website: data.website,
       telegramPost: data.telegramPost,
       image: data.image,
+      content: data.content,
       translations: data.translations
     };
 

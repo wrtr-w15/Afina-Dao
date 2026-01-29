@@ -1,9 +1,8 @@
 'use client';
 
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode } from 'react';
 import Head from 'next/head';
 import Header from '@/components/Header';
-import Sidebar from '@/components/sidebar/Sidebar';
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,49 +14,8 @@ interface LayoutProps {
 export default function Layout({ 
   children, 
   title, 
-  description, 
-  showSidebar = true
+  description
 }: LayoutProps) {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Определяем размер экрана с debouncing
-  useEffect(() => {
-    let resizeTimeout: NodeJS.Timeout;
-    
-    const checkScreenSize = () => {
-      const isMobileSize = window.innerWidth < 1024; // lg breakpoint
-      setIsMobile(isMobileSize);
-      if (isMobileSize) {
-        setIsSidebarCollapsed(true); // На мобильных устройствах сайдбар свернут по умолчанию
-      } else {
-        setIsSidebarCollapsed(false); // На больших экранах сайдбар всегда видим
-      }
-    };
-
-    const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(checkScreenSize, 150); // Debounce 150ms
-    };
-
-    checkScreenSize();
-    window.addEventListener('resize', handleResize, { passive: true });
-    return () => {
-      clearTimeout(resizeTimeout);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  const handleSidebarToggle = () => {
-    if (isMobile) {
-      // На мобильных устройствах открываем мобильное меню в хедере
-      setIsSidebarCollapsed(true);
-    } else {
-      // На больших экранах просто сворачиваем сайдбар
-      setIsSidebarCollapsed(!isSidebarCollapsed);
-    }
-  };
-
   return (
     <>
       <Head>
@@ -67,28 +25,27 @@ export default function Layout({
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
-        {/* Header */}
-        <Header
-          onSearch={(query) => {
-            console.log('Search query:', query);
-            // TODO: Implement search functionality
-          }}
-          onMenuToggle={handleSidebarToggle}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
-
-        {/* Sidebar - фиксированный на больших экранах */}
-        {showSidebar && !isMobile && !isSidebarCollapsed && (
-          <div className="fixed left-0 top-16 bottom-0 w-64 z-40 transition-all duration-300">
-            <Sidebar />
+      <div className="relative min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
+        {/* Animated gradient background */}
+        <div className="fixed inset-0 z-0">
+          {/* Base dark gradient */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0f] via-[#0d0d15] to-[#0a0a0f]" />
+          
+          {/* Subtle animated glow */}
+          <div className="absolute inset-0 opacity-30">
+            <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] animate-pulse-slow" />
+            <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[100px] animate-pulse-slow-delayed" />
           </div>
-        )}
+          
+          {/* Noise texture overlay */}
+          <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNhKSIvPjwvc3ZnPg==')]" />
+        </div>
+
+        {/* Header */}
+        <Header />
 
         {/* Main content */}
-        <main className={`transition-all duration-300 bg-white dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen pt-16 ${
-          showSidebar && !isSidebarCollapsed && !isMobile ? 'ml-64' : 'ml-0'
-        }`}>
+        <main className="relative z-10 min-h-screen pt-16">
           <div className="p-6 pb-16">
             {children}
           </div>

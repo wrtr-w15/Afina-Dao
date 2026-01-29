@@ -3,155 +3,247 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { 
   BarChart3, 
-  Users, 
   FolderOpen, 
-  Settings,
+  Tag,
   ArrowRight,
   TrendingUp,
-  Activity
+  Activity,
+  Plus,
+  Eye
 } from 'lucide-react';
+import { getProjects } from '@/lib/projects';
+import { getCategories } from '@/lib/categories';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    activeProjects: 0,
+    draftProjects: 0,
+    categories: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [projects, categories] = await Promise.all([
+          getProjects(),
+          getCategories()
+        ]);
+        
+        setStats({
+          totalProjects: projects.length,
+          activeProjects: projects.filter(p => p.status === 'active').length,
+          draftProjects: projects.filter(p => p.status === 'draft').length,
+          categories: categories.filter(c => c.isActive).length
+        });
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadStats();
+  }, []);
+
+  const statCards = [
+    {
+      label: 'Всего проектов',
+      value: stats.totalProjects,
+      icon: BarChart3,
+      color: 'from-blue-500 to-cyan-500',
+      bgColor: 'bg-blue-500/10'
+    },
+    {
+      label: 'Активных',
+      value: stats.activeProjects,
+      icon: Activity,
+      color: 'from-emerald-500 to-teal-500',
+      bgColor: 'bg-emerald-500/10'
+    },
+    {
+      label: 'Черновиков',
+      value: stats.draftProjects,
+      icon: TrendingUp,
+      color: 'from-amber-500 to-orange-500',
+      bgColor: 'bg-amber-500/10'
+    },
+    {
+      label: 'Категорий',
+      value: stats.categories,
+      icon: Tag,
+      color: 'from-violet-500 to-purple-500',
+      bgColor: 'bg-violet-500/10'
+    }
+  ];
+
+  const quickActions = [
+    {
+      title: 'Создать проект',
+      description: 'Добавить новый проект в базу',
+      icon: FolderOpen,
+      color: 'from-violet-500 to-purple-500',
+      path: '/admin/projects/create'
+    },
+    {
+      title: 'Создать категорию',
+      description: 'Добавить новую категорию',
+      icon: Tag,
+      color: 'from-emerald-500 to-teal-500',
+      path: '/admin/categories/create'
+    },
+    {
+      title: 'Все проекты',
+      description: 'Просмотреть и редактировать',
+      icon: Eye,
+      color: 'from-blue-500 to-cyan-500',
+      path: '/admin/projects'
+    }
+  ];
 
   return (
     <AdminLayout>
-      <div className="p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Панель администратора
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Управление проектами, категориями и настройками
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">
+            Добро пожаловать
+          </h1>
+          <p className="text-gray-400">
+            Панель управления Afina DAO
+          </p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {statCards.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <div
+                key={index}
+                className="relative overflow-hidden rounded-2xl bg-white/5 border border-white/5 p-5 hover:bg-white/[0.07] transition-all group"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-gray-400 mb-1">{stat.label}</p>
+                    <p className="text-3xl font-bold text-white">
+                      {loading ? '—' : stat.value}
+                    </p>
+                  </div>
+                  <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center`}>
+                    <Icon className={`h-6 w-6 bg-gradient-to-br ${stat.color} bg-clip-text text-transparent`} style={{ color: 'currentColor' }} />
+                  </div>
+                </div>
+                {/* Gradient line at bottom */}
+                <div className={`absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r ${stat.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-white mb-4">Быстрые действия</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {quickActions.map((action, index) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={index}
+                  onClick={() => router.push(action.path)}
+                  className="relative overflow-hidden rounded-2xl bg-white/5 border border-white/5 p-5 hover:bg-white/[0.07] transition-all group text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${action.color} flex items-center justify-center shadow-lg`}>
+                      <Icon className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-white group-hover:text-white transition-colors">
+                        {action.title}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {action.description}
+                      </p>
+                    </div>
+                    <ArrowRight className="h-5 w-5 text-gray-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Info Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent Activity Placeholder */}
+          <div className="rounded-2xl bg-white/5 border border-white/5 p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Навигация
+            </h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => router.push('/admin/projects')}
+                className="w-full flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center">
+                  <FolderOpen className="h-5 w-5 text-violet-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-white">Проекты</p>
+                  <p className="text-sm text-gray-500">Управление проектами</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-white transition-colors" />
+              </button>
+              
+              <button
+                onClick={() => router.push('/admin/categories')}
+                className="w-full flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                  <Tag className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-white">Категории</p>
+                  <p className="text-sm text-gray-500">Управление категориями</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-white transition-colors" />
+              </button>
+              
+              <button
+                onClick={() => router.push('/admin/subscription-pricing')}
+                className="w-full flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                  <BarChart3 className="h-5 w-5 text-amber-400" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-white">Подписки</p>
+                  <p className="text-sm text-gray-500">Настройка цен подписок</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-white transition-colors" />
+              </button>
+            </div>
+          </div>
+
+          {/* Help Card */}
+          <div className="rounded-2xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 p-6">
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Подсказка
+            </h3>
+            <p className="text-gray-400 mb-4">
+              Используйте боковое меню для навигации между разделами. 
+              Для создания нового проекта используйте Markdown формат с заголовками ### для создания разделов навигации.
             </p>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                  <BarChart3 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Всего проектов</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">12</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                  <Activity className="w-6 h-6 text-green-600 dark:text-green-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Активных</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">8</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
-                  <TrendingUp className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Черновиков</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">3</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-                  <FolderOpen className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Категорий</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">5</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Быстрые действия
-              </h3>
-              <div className="space-y-3">
-                <Button
-                  onClick={() => router.push('/admin/projects/new')}
-                  variant="secondary"
-                  className="w-full justify-start p-3 h-auto"
-                >
-                  <div className="flex items-center w-full">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg mr-3">
-                      <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium">Создать проект</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Добавить новый проект</p>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-gray-400" />
-                  </div>
-                </Button>
-
-                <Button
-                  onClick={() => router.push('/admin/categories/new')}
-                  variant="secondary"
-                  className="w-full justify-start p-3 h-auto"
-                >
-                  <div className="flex items-center w-full">
-                    <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg mr-3">
-                      <FolderOpen className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium">Создать категорию</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Добавить новую категорию</p>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-gray-400" />
-                  </div>
-                </Button>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Последние действия
-              </h3>
-              <div className="space-y-3">
-                <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg mr-3">
-                    <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 dark:text-white">Создан проект "Новый проект"</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">2 часа назад</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg mr-3">
-                    <Activity className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 dark:text-white">Обновлена категория "Разработка"</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">4 часа назад</p>
-                  </div>
-                </div>
-              </div>
-            </Card>
+            <div className="p-4 rounded-xl bg-black/20 font-mono text-sm text-gray-300">
+              <p className="text-indigo-400">### Введение</p>
+              <p className="text-gray-500">Описание раздела...</p>
+              <p className="text-indigo-400 mt-2">### Установка</p>
+              <p className="text-gray-500">Шаги установки...</p>
+            </div>
           </div>
         </div>
       </div>

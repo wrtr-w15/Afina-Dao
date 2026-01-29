@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '../../../../lib/database';
 import { UpdateCategoryData } from '../../../../types/category';
 
+// Безопасное добавление колонки (игнорирует ошибку если колонка уже существует)
+async function safeAddColumn(connection: any, columnDef: string): Promise<void> {
+  try {
+    await connection.execute(`ALTER TABLE categories ADD COLUMN ${columnDef}`);
+  } catch (error: any) {
+    // Игнорируем ошибку "Duplicate column name" (код 1060)
+    if (error.errno !== 1060) {
+      throw error;
+    }
+  }
+}
+
+// Проверяем и создаём недостающие колонки
+async function ensureColumns(connection: any): Promise<void> {
+  try {
+    await safeAddColumn(connection, 'is_active TINYINT(1) DEFAULT 1');
+    await safeAddColumn(connection, 'sort_order INT DEFAULT 0');
+    await safeAddColumn(connection, 'color VARCHAR(20) DEFAULT \'#3B82F6\'');
+    await safeAddColumn(connection, 'icon VARCHAR(50) DEFAULT NULL');
+  } catch (error) {
+    console.error('Error ensuring columns:', error);
+  }
+}
+
 // GET /api/categories/[id] - получить категорию по ID
 export async function GET(
   request: NextRequest,
@@ -10,6 +34,8 @@ export async function GET(
   const connection = await getConnection();
   try {
     const { id } = await params;
+    
+    await ensureColumns(connection);
     
     const [categories] = await connection.execute(
       'SELECT * FROM categories WHERE id = ?',
@@ -22,15 +48,15 @@ export async function GET(
 
     const category = (categories as any[])[0];
 
-    // Преобразуем данные из базы в формат фронтенда
     const formattedCategory = {
       id: category.id,
       name: category.name,
+      slug: category.slug,
       description: category.description,
-      color: category.color,
+      color: category.color || '#3B82F6',
       icon: category.icon,
-      isActive: Boolean(category.is_active),
-      sortOrder: category.sort_order,
+      isActive: category.is_active !== undefined ? Boolean(category.is_active) : true,
+      sortOrder: category.sort_order || 0,
       createdAt: category.created_at,
       updatedAt: category.updated_at
     };
@@ -58,6 +84,8 @@ export async function PUT(
   const data: UpdateCategoryData = await request.json();
   const connection = await getConnection();
   try {
+    await ensureColumns(connection);
+    
     // Проверяем, что категория существует
     const [existing] = await connection.execute(
       'SELECT id FROM categories WHERE id = ?',
@@ -96,7 +124,7 @@ export async function PUT(
       data.description,
       data.color,
       data.icon,
-      data.isActive !== undefined ? data.isActive : undefined,
+      data.isActive !== undefined ? (data.isActive ? 1 : 0) : null,
       data.sortOrder,
       id
     ]);

@@ -13,39 +13,20 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeName, setThemeName] = useState<ThemeName>(THEME_NAMES.LIGHT);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Always dark mode
+  const [themeName] = useState<ThemeName>(THEME_NAMES.DARK);
+  const [isDarkMode] = useState(true);
 
-  // Load theme on mount
+  // Apply dark theme on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('afina-dao-theme') as ThemeName || THEME_NAMES.LIGHT;
-    setThemeName(savedTheme);
-    setIsDarkMode(savedTheme === THEME_NAMES.DARK);
+    const root = document.documentElement;
+    root.classList.add('dark');
+    localStorage.setItem('afina-dao-theme', THEME_NAMES.DARK);
   }, []);
 
-  // Update theme when themeName changes
-  useEffect(() => {
-    const isDark = themeName === THEME_NAMES.DARK;
-    setIsDarkMode(isDark);
-    
-    // Apply theme to document
-    const root = document.documentElement;
-    if (isDark) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  }, [themeName]);
-
-  const toggleTheme = () => {
-    const newTheme = themeName === THEME_NAMES.LIGHT ? THEME_NAMES.DARK : THEME_NAMES.LIGHT;
-    setTheme(newTheme);
-  };
-
-  const setTheme = (theme: ThemeName) => {
-    setThemeName(theme);
-    localStorage.setItem('afina-dao-theme', theme);
-  };
+  // These functions are kept for API compatibility but don't do anything
+  const toggleTheme = () => {};
+  const setTheme = () => {};
 
   return (
     <ThemeContext.Provider value={{ themeName, isDarkMode, toggleTheme, setTheme }}>

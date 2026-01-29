@@ -1,0 +1,184 @@
+// Inline клавиатуры для Telegram бота
+
+export interface InlineButton {
+  text: string;
+  callback_data?: string;
+  url?: string;
+}
+
+export interface InlineKeyboard {
+  inline_keyboard: InlineButton[][];
+}
+
+// Главное меню при /start
+export function getMainMenuKeyboard(hasSubscription: boolean): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+  
+  if (hasSubscription) {
+    buttons.push([{ text: '🔄 Продлить подписку', callback_data: 'buy_subscription' }]);
+  } else {
+    buttons.push([{ text: '🛒 Купить подписку', callback_data: 'buy_subscription' }]);
+  }
+  
+  buttons.push([{ text: '👤 Личный кабинет', callback_data: 'account' }]);
+  buttons.push([{ text: '🌐 Наши соцсети', callback_data: 'socials' }]);
+  
+  return { inline_keyboard: buttons };
+}
+
+// Клавиатура выбора тарифа - цены в USDT
+export function getPlanKeyboard(plans: { id: string; name: string; priceUsdt: number; isPopular?: boolean }[]): InlineKeyboard {
+  const buttons: InlineButton[][] = plans.map(plan => {
+    const star = plan.isPopular ? '⭐ ' : '';
+    return [{
+      text: `${star}${plan.name} — ${plan.priceUsdt} USDT`,
+      callback_data: `select_plan:${plan.id}`
+    }];
+  });
+
+  buttons.push([{ text: '◀️ Назад', callback_data: 'back_to_main' }]);
+
+  return { inline_keyboard: buttons };
+}
+
+// Клавиатура подтверждения заказа
+export function getConfirmKeyboard(needsDiscord: boolean, needsEmail: boolean, discordOAuthUrl?: string): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+  
+  if (needsDiscord && discordOAuthUrl) {
+    buttons.push([{ text: '🎮 Подключить Discord', url: discordOAuthUrl }]);
+  }
+  
+  if (needsEmail) {
+    buttons.push([{ text: '📧 Указать Email', callback_data: 'enter_email' }]);
+  }
+  
+  if (!needsDiscord && !needsEmail) {
+    buttons.push([{ text: '✅ Подтвердить и оплатить', callback_data: 'confirm_order' }]);
+  }
+  
+  buttons.push([{ text: '◀️ Назад', callback_data: 'buy_subscription' }]);
+
+  return { inline_keyboard: buttons };
+}
+
+// Клавиатура оплаты
+export function getPaymentKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '💳 Оплатить (тест)', callback_data: 'process_payment' }],
+      [{ text: '❌ Отмена', callback_data: 'cancel_order' }]
+    ]
+  };
+}
+
+// Клавиатура после успешной оплаты
+export function getSuccessKeyboard(discordInvite?: string): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+
+  if (discordInvite) {
+    buttons.push([{ text: '🎮 Перейти в Discord', url: discordInvite }]);
+  }
+
+  buttons.push([{ text: '👤 Личный кабинет', callback_data: 'account' }]);
+  buttons.push([{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]);
+
+  return { inline_keyboard: buttons };
+}
+
+// Клавиатура личного кабинета
+export function getAccountKeyboard(options: {
+  hasSubscription: boolean;
+  discordConnected: boolean;
+  emailConnected: boolean;
+  discordOAuthUrl?: string;
+}): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+  
+  if (options.hasSubscription) {
+    buttons.push([{ text: '📊 Статус подписки', callback_data: 'check_status' }]);
+  }
+  
+  // Discord
+  if (options.discordConnected) {
+    buttons.push([
+      { text: '🎮 Переподключить Discord', callback_data: 'reconnect_discord' },
+      { text: '🔌 Отключить', callback_data: 'disconnect_discord' }
+    ]);
+  } else if (options.discordOAuthUrl) {
+    buttons.push([{ text: '🎮 Подключить Discord', url: options.discordOAuthUrl }]);
+  }
+  
+  // Email
+  if (options.emailConnected) {
+    buttons.push([
+      { text: '📧 Изменить Email', callback_data: 'change_email' },
+      { text: '🔌 Отключить', callback_data: 'disconnect_email' }
+    ]);
+  } else {
+    buttons.push([{ text: '📧 Указать Email', callback_data: 'change_email' }]);
+  }
+  
+  buttons.push([{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]);
+  
+  return { inline_keyboard: buttons };
+}
+
+// Клавиатура ввода email
+export function getEmailInputKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '◀️ Назад', callback_data: 'back_to_account' }]
+    ]
+  };
+}
+
+// Клавиатура соцсетей
+export function getSocialsKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '📱 Telegram канал', url: 'https://t.me/afina_dao' }],
+      [{ text: '🎮 Discord сервер', url: process.env.DISCORD_INVITE_URL || 'https://discord.gg/afinadao' }],
+      [{ text: '🐦 Twitter', url: 'https://twitter.com/afina_dao' }],
+      [{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]
+    ]
+  };
+}
+
+// Подтверждение отключения Discord
+export function getConfirmDisconnectDiscordKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '✅ Да, отключить', callback_data: 'confirm_disconnect_discord' }],
+      [{ text: '❌ Отмена', callback_data: 'back_to_account' }]
+    ]
+  };
+}
+
+// Подтверждение отключения Email
+export function getConfirmDisconnectEmailKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '✅ Да, отключить', callback_data: 'confirm_disconnect_email' }],
+      [{ text: '❌ Отмена', callback_data: 'back_to_account' }]
+    ]
+  };
+}
+
+// Клавиатура отмены
+export function getCancelKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '❌ Отмена', callback_data: 'cancel' }]
+    ]
+  };
+}
+
+// Клавиатура назад в главное меню
+export function getBackToMainKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]
+    ]
+  };
+}

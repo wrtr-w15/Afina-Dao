@@ -2,10 +2,55 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '../../../lib/database';
 import { Category, CreateCategoryData } from '../../../types/category';
 
+// Генерация slug из названия
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[а-яё]/g, (char) => {
+      const map: { [key: string]: string } = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+      };
+      return map[char] || char;
+    })
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 100);
+}
+
+// Безопасное добавление колонки (игнорирует ошибку если колонка уже существует)
+async function safeAddColumn(connection: any, columnDef: string): Promise<void> {
+  try {
+    await connection.execute(`ALTER TABLE categories ADD COLUMN ${columnDef}`);
+  } catch (error: any) {
+    // Игнорируем ошибку "Duplicate column name" (код 1060)
+    if (error.errno !== 1060) {
+      throw error;
+    }
+  }
+}
+
+// Проверяем и создаём недостающие колонки
+async function ensureColumns(connection: any): Promise<void> {
+  try {
+    await safeAddColumn(connection, 'is_active TINYINT(1) DEFAULT 1');
+    await safeAddColumn(connection, 'sort_order INT DEFAULT 0');
+    await safeAddColumn(connection, 'color VARCHAR(20) DEFAULT \'#3B82F6\'');
+    await safeAddColumn(connection, 'icon VARCHAR(50) DEFAULT NULL');
+  } catch (error) {
+    console.error('Error ensuring columns:', error);
+  }
+}
+
 // GET /api/categories - получить все категории
 export async function GET() {
   const connection = await getConnection();
   try {
+    // Убеждаемся что все колонки существуют
+    await ensureColumns(connection);
     
     const [categories] = await connection.execute(`
       SELECT * FROM categories 
@@ -13,14 +58,14 @@ export async function GET() {
     `);
 
     // Преобразуем данные из базы в формат фронтенда
-    // Структура таблицы использует snake_case
     const formattedCategories = (categories as any[]).map(category => ({
       id: category.id,
       name: category.name,
+      slug: category.slug,
       description: category.description || null,
-      color: category.color || '#3B82F6', // Значение по умолчанию если поля нет
+      color: category.color || '#3B82F6',
       icon: category.icon || null,
-      isActive: Boolean(category.is_active),
+      isActive: category.is_active !== undefined ? Boolean(category.is_active) : true,
       sortOrder: category.sort_order || 0,
       createdAt: category.created_at,
       updatedAt: category.updated_at
@@ -50,6 +95,9 @@ export async function POST(request: NextRequest) {
     const data: CreateCategoryData = await request.json();
     connection = await getConnection();
     
+    // Убеждаемся что все колонки существуют
+    await ensureColumns(connection);
+    
     // Проверяем, что название уникально
     const [existing] = await connection.execute(
       'SELECT id FROM categories WHERE name = ?',
@@ -60,14 +108,28 @@ export async function POST(request: NextRequest) {
       connection.release();
       return NextResponse.json({ error: 'Category with this name already exists' }, { status: 400 });
     }
-
+    
+    // Генерируем slug из названия
+    const slug = generateSlug(data.name);
+    
+    // Проверяем уникальность slug
+    const [existingSlug] = await connection.execute(
+      'SELECT id FROM categories WHERE slug = ?',
+      [slug]
+    );
+    
+    // Если slug уже существует, добавляем уникальный суффикс
+    const finalSlug = (existingSlug as any[]).length > 0 
+      ? `${slug}-${Date.now()}` 
+      : slug;
+    
     // Создаем новую категорию
-    // Структура таблицы использует snake_case
-    const [result] = await connection.execute(`
-      INSERT INTO categories (name, description, color, icon, is_active, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?)
+    await connection.execute(`
+      INSERT INTO categories (name, slug, description, color, icon, is_active, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [
       data.name,
+      finalSlug,
       data.description || null,
       data.color || '#3B82F6',
       data.icon || null,
@@ -89,6 +151,7 @@ export async function POST(request: NextRequest) {
     const formattedCategory = {
       id: category.id,
       name: category.name,
+      slug: category.slug,
       description: category.description || null,
       color: category.color || '#3B82F6',
       icon: category.icon || null,

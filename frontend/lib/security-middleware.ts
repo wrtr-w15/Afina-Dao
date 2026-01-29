@@ -174,6 +174,11 @@ export async function secureAPIEndpoint(
  */
 export async function checkAdminAuth(request?: NextRequest): Promise<NextResponse | null> {
   try {
+    // В режиме разработки пропускаем проверку аутентификации
+    if (process.env.NODE_ENV === 'development') {
+      return null; // Разрешаем доступ без проверки
+    }
+
     const cookieStore = await cookies();
     const adminSession = cookieStore.get('admin-session');
     

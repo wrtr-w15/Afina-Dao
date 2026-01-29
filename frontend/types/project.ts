@@ -4,8 +4,15 @@ export interface ProjectTranslation {
   locale: string;
   name: string;
   description: string;
+  content?: string; // Markdown content for this language
 }
 
+export interface ContentTranslation {
+  locale: string;
+  content: string;
+}
+
+// Legacy types - kept for backward compatibility
 export interface BlockTranslation {
   locale: string;
   title: string;
@@ -16,9 +23,9 @@ export interface BlockTranslation {
 export interface ProjectBlock {
   id: string;
   title: string;
-  content: string; // Markdown content
+  content: string;
   gifUrl?: string;
-  gifCaption?: string; // Подпись под GIF
+  gifCaption?: string;
   links?: ProjectLink[];
   translations?: BlockTranslation[];
 }
@@ -30,11 +37,20 @@ export interface ProjectLink {
   type: 'website' | 'github' | 'documentation' | 'demo' | 'other';
 }
 
+// Parsed section from Markdown ### headers
+export interface MarkdownSection {
+  id: string;
+  title: string;
+  content: string;
+  level: number;
+}
+
 export interface Project {
   id: string;
   name: string;
   sidebarName: string; // Название для отображения в сайдбаре
   description: string;
+  content?: string; // Full Markdown content (new approach)
   status: ProjectStatus;
   category: string;
   startDate: string;
@@ -43,7 +59,7 @@ export interface Project {
   website?: string;
   telegramPost?: string;
   image?: string;
-  blocks: ProjectBlock[];
+  blocks?: ProjectBlock[]; // Legacy - kept for backward compatibility
   translations?: ProjectTranslation[];
   createdAt: string;
   updatedAt: string;
@@ -71,6 +87,7 @@ export interface CreateProjectData {
   name: string;
   sidebarName: string;
   description: string;
+  content?: string; // Full Markdown content
   status: ProjectStatus;
   category: string;
   startDate: string;
@@ -79,7 +96,7 @@ export interface CreateProjectData {
   website?: string;
   telegramPost?: string;
   image?: string;
-  blocks: ProjectBlock[];
+  blocks?: ProjectBlock[]; // Legacy
   translations?: ProjectTranslation[];
 }
 
@@ -140,3 +157,57 @@ export const OS_COMPATIBILITY_COLORS: Record<OSCompatibility, string> = {
   windows: 'text-blue-600 bg-blue-100 dark:bg-blue-900/20',
   macos: 'text-gray-600 bg-gray-100 dark:bg-gray-900/20'
 };
+
+// Utility function to parse Markdown content into sections based on ### headers
+export function parseMarkdownSections(content: string): MarkdownSection[] {
+  if (!content) return [];
+  
+  const sections: MarkdownSection[] = [];
+  const lines = content.split('\n');
+  
+  let currentSection: MarkdownSection | null = null;
+  let contentLines: string[] = [];
+  
+  for (const line of lines) {
+    // Check for ### header (level 3)
+    const headerMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    
+    if (headerMatch && headerMatch[1].length === 3) {
+      // Save previous section if exists
+      if (currentSection) {
+        currentSection.content = contentLines.join('\n').trim();
+        sections.push(currentSection);
+      }
+      
+      // Start new section
+      const title = headerMatch[2].trim();
+      currentSection = {
+        id: title.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, '-').replace(/^-|-$/g, ''),
+        title,
+        content: '',
+        level: 3
+      };
+      contentLines = [];
+    } else {
+      contentLines.push(line);
+    }
+  }
+  
+  // Save last section
+  if (currentSection) {
+    currentSection.content = contentLines.join('\n').trim();
+    sections.push(currentSection);
+  }
+  
+  // If no ### sections found, treat entire content as one section
+  if (sections.length === 0 && content.trim()) {
+    sections.push({
+      id: 'content',
+      title: 'Содержание',
+      content: content.trim(),
+      level: 3
+    });
+  }
+  
+  return sections;
+}

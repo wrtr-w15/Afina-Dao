@@ -31,16 +31,10 @@ echo "✅ npm version: $(npm -v)"
 echo ""
 echo "📦 Installing dependencies..."
 
-# Backend dependencies
-if [ ! -d "backend/node_modules" ]; then
-    echo "Installing backend dependencies..."
-    cd backend && npm install && cd ..
-fi
-
-# Frontend dependencies
+# Frontend dependencies (main app - includes API routes)
 if [ ! -d "frontend/node_modules" ]; then
     echo "Installing frontend dependencies..."
-    cd frontend && npm install && cd ..
+    (cd frontend && npm install)
 fi
 
 echo "✅ Dependencies installed"
@@ -63,43 +57,33 @@ else
 fi
 
 echo ""
-echo "🎯 Starting development servers..."
+echo "🎯 Starting development server..."
 echo ""
 
 # Function to handle cleanup on exit
 cleanup() {
     echo ""
-    echo "🛑 Shutting down servers..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    echo "🛑 Shutting down server..."
+    kill $FRONTEND_PID 2>/dev/null
     exit 0
 }
 
 # Set up signal handlers
 trap cleanup SIGINT SIGTERM
 
-# Start backend
-echo "🔧 Starting backend server (http://localhost:3001)..."
-cd backend && npm run start:dev &
-BACKEND_PID=$!
-cd ..
-
-# Wait a moment for backend to start
-sleep 3
-
-# Start frontend
-echo "🎨 Starting frontend server (http://localhost:3000)..."
-cd frontend && npm run dev &
+# Start frontend (Next.js with API routes)
+echo "🎨 Starting Next.js server (http://localhost:3000)..."
+(cd frontend && npm run dev) &
 FRONTEND_PID=$!
-cd ..
 
 echo ""
-echo "✅ Development servers started!"
+echo "✅ Development server started!"
 echo ""
-echo "🌐 Frontend: http://localhost:3000"
-echo "🔧 Backend API: http://localhost:3001"
-echo "📚 API Documentation: http://localhost:3001/api/docs"
+echo "🌐 App: http://localhost:3000"
+echo "🔧 API: http://localhost:3000/api"
+echo "👤 Admin: http://localhost:3000/admin"
 echo ""
-echo "Press Ctrl+C to stop all servers"
+echo "Press Ctrl+C to stop the server"
 
-# Wait for processes
-wait $BACKEND_PID $FRONTEND_PID
+# Wait for process
+wait $FRONTEND_PID
