@@ -3,6 +3,7 @@ import { getConnection } from '@/lib/database';
 import { PaymentStatuses, IPNPayload } from '@/lib/nowpayments';
 import { grantRole } from '@/lib/discord-bot';
 import { grantAccess } from '@/lib/notion';
+import { grantAccess as grantGoogleDriveAccess } from '@/lib/google-drive';
 import { sendMessage } from '@/lib/telegram-bot';
 import crypto from 'crypto';
 
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
       
       const [payments] = await connection.execute(
         `SELECT p.*, s.user_id, s.id as sub_id, s.period_months, 
-                u.discord_id, u.email, u.telegram_id 
+                u.discord_id, u.email, u.google_drive_email, u.telegram_id 
          FROM payments p 
          LEFT JOIN subscriptions s ON p.subscription_id COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
          LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
@@ -233,6 +234,7 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
   // Выдаём доступы
   let discordGranted = false;
   let notionGranted = false;
+  let googleDriveGranted = false;
 
   if (payment.discord_id) {
     try {
@@ -252,14 +254,59 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
     }
   }
 
-  // Обновляем статус выдачи доступов
-  await connection.execute(
-    `UPDATE subscriptions 
-     SET discord_role_granted = ?, 
-         notion_access_granted = ? 
-     WHERE id = ?`,
-    [discordGranted, notionGranted, payment.sub_id]
-  );
+  if (payment.google_drive_email) {
+    try {
+      const result = await grantGoogleDriveAccess(
+        payment.google_drive_email,
+        payment.user_id,
+        payment.sub_id
+      );
+      googleDriveGranted = result.success;
+    } catch (e) {
+      console.error('Failed to grant Google Drive access:', e);
+    }
+  }
+
+  // Обновляем статус выдачи доступов (добавляем поле если его нет)
+  try {
+    await connection.execute(
+      `UPDATE subscriptions 
+       SET discord_role_granted = ?, 
+           notion_access_granted = ?,
+           google_drive_access_granted = ? 
+       WHERE id = ?`,
+      [discordGranted, notionGranted, googleDriveGranted, payment.sub_id]
+    );
+  } catch (e: any) {
+    // Если поле google_drive_access_granted не существует, добавляем его
+    if (e.code === 'ER_BAD_FIELD_ERROR' || e.message?.includes('google_drive_access_granted')) {
+      try {
+        await connection.execute(
+          `ALTER TABLE subscriptions ADD COLUMN google_drive_access_granted BOOLEAN DEFAULT FALSE`
+        );
+        await connection.execute(
+          `UPDATE subscriptions 
+           SET discord_role_granted = ?, 
+               notion_access_granted = ?,
+               google_drive_access_granted = ? 
+           WHERE id = ?`,
+          [discordGranted, notionGranted, googleDriveGranted, payment.sub_id]
+        );
+      } catch (alterError) {
+        console.error('Failed to add google_drive_access_granted column:', alterError);
+        // Обновляем без нового поля
+        await connection.execute(
+          `UPDATE subscriptions 
+           SET discord_role_granted = ?, 
+               notion_access_granted = ? 
+           WHERE id = ?`,
+          [discordGranted, notionGranted, payment.sub_id]
+        );
+      }
+    } else {
+      throw e;
+    }
+  }
 
   // Логируем успех
   await connection.execute(
@@ -275,6 +322,7 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
         pay_currency: ipnData.pay_currency,
         discord_granted: discordGranted,
         notion_granted: notionGranted,
+        google_drive_granted: googleDriveGranted,
         end_date: endDate.toISOString()
       })
     ]
@@ -286,6 +334,7 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
       let accessInfo = '';
       if (discordGranted) accessInfo += '\n✅ Роль в Discord выдана';
       if (notionGranted) accessInfo += '\n✅ Доступ к Notion открыт';
+      if (googleDriveGranted) accessInfo += '\n✅ Доступ к Google Drive открыт';
       
       const discordInvite = process.env.DISCORD_INVITE_URL;
       const discordButton = discordInvite ? `\n\n🎮 <a href="${discordInvite}">Перейти в Discord</a>` : '';

@@ -27,6 +27,11 @@ import {
   handleConfirmDisconnectDiscord,
   handleDisconnectEmail,
   handleConfirmDisconnectEmail,
+  handleEnterGoogleDriveEmail,
+  handleGoogleDriveEmailInput,
+  handleChangeGoogleDriveEmail,
+  handleDisconnectGoogleDrive,
+  handleConfirmDisconnectGoogleDrive,
   handleCheckStatus,
   handleBackToAccount,
   handleRefreshAccountInfo,
@@ -95,6 +100,9 @@ async function handleMessage(message: any): Promise<void> {
     case 'entering_email':
     case 'changing_email':
       return handleEmailInput(message);
+    case 'entering_google_drive_email':
+    case 'changing_google_drive_email':
+      return handleGoogleDriveEmailInput(message);
     case 'entering_promocode':
       return handlePromocodeInput(message);
     case 'awaiting_discord_oauth':
@@ -160,6 +168,13 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
         return await handleDisconnectEmail(callbackQuery);
       case 'confirm_disconnect_email': 
         return await handleConfirmDisconnectEmail(callbackQuery);
+      case 'change_google_drive_email':
+      case 'enter_google_drive_email':
+        return await handleEnterGoogleDriveEmail(callbackQuery);
+      case 'disconnect_google_drive':
+        return await handleDisconnectGoogleDrive(callbackQuery);
+      case 'confirm_disconnect_google_drive':
+        return await handleConfirmDisconnectGoogleDrive(callbackQuery);
       case 'check_status': 
         return await handleCheckStatus(callbackQuery);
       case 'back_to_account': 

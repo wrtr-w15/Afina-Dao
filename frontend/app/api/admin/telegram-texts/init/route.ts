@@ -181,9 +181,10 @@ Email нужен для приглашения в Notion с гайдами.
 
 🎮 <b>Discord:</b> {{discordStatus}}
 📧 <b>Email (Notion):</b> {{emailStatus}}
+📁 <b>Google Drive:</b> {{googleDriveStatus}}
 
 Управляйте своими данными:`,
-    description: 'Личный кабинет пользователя. Подстановки: {{subscriptionStatus}}, {{discordStatus}}, {{emailStatus}}',
+    description: 'Личный кабинет пользователя. Подстановки: {{subscriptionStatus}}, {{discordStatus}}, {{emailStatus}}, {{googleDriveStatus}}',
     sortOrder: 100,
     buttons: [
       [{ text: '📊 Статус подписки', callback_data: 'check_status' }],
@@ -268,6 +269,47 @@ Email нужен для приглашения в Notion с гайдами.
 Доступ к Notion отозван.`,
     description: 'Подтверждение отключения Email',
     sortOrder: 160
+  },
+  {
+    key: 'askGoogleDriveEmail',
+    section: 'account',
+    value: `📁 <b>Введите ваш Google Drive Email</b>
+
+Email нужен для предоставления доступа к Google Drive.
+
+Пример: <code>user@example.com</code>`,
+    description: 'Запрос ввода Google Drive Email',
+    sortOrder: 165,
+    buttons: [
+      [{ text: '◀️ Назад', callback_data: 'account' }]
+    ]
+  },
+  {
+    key: 'invalidGoogleDriveEmail',
+    section: 'account',
+    value: `❌ <b>Неверный формат Email</b>
+
+Пожалуйста, введите корректный Google Drive email адрес:`,
+    description: 'Ошибка неверного формата Google Drive Email',
+    sortOrder: 166
+  },
+  {
+    key: 'confirmDisconnectGoogleDrive',
+    section: 'account',
+    value: `⚠️ <b>Отключить Google Drive Email?</b>
+
+Доступ к Google Drive будет отозван.`,
+    description: 'Подтверждение отключения Google Drive Email',
+    sortOrder: 167
+  },
+  {
+    key: 'googleDriveDisconnected',
+    section: 'account',
+    value: `✅ <b>Google Drive Email отключён</b>
+
+Доступ к Google Drive был отозван.`,
+    description: 'Сообщение об отключении Google Drive Email',
+    sortOrder: 168
   },
 
   // === SOCIALS SECTION ===

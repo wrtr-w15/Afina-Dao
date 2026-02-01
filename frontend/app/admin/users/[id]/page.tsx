@@ -26,6 +26,7 @@ interface UserDetail {
   discordId?: string;
   discordUsername?: string;
   email?: string;
+  googleDriveEmail?: string;
   createdAt: string;
   updatedAt: string;
   availableTariffIds: string[];
@@ -42,6 +43,7 @@ interface UserForm {
   discordId: string;
   discordUsername: string;
   email: string;
+  googleDriveEmail: string;
 }
 
 export default function UserEditPage() {
@@ -54,6 +56,7 @@ export default function UserEditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSub, setSavingSub] = useState<string | null>(null);
+  const [refreshingAccesses, setRefreshingAccesses] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -65,7 +68,8 @@ export default function UserEditPage() {
     telegramLastName: '',
     discordId: '',
     discordUsername: '',
-    email: ''
+    email: '',
+    googleDriveEmail: ''
   });
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [subEditForm, setSubEditForm] = useState<{ endDate: string; startDate: string; status: string; isFree: boolean }>({ endDate: '', startDate: '', status: 'active', isFree: false });
@@ -86,15 +90,16 @@ export default function UserEditPage() {
       const data = await res.json();
       setUser(data);
       setSelectedTariffId((data.availableTariffIds && data.availableTariffIds[0]) ? data.availableTariffIds[0] : null);
-      setFormUser({
-        telegramId: data.telegramId != null ? String(data.telegramId) : '',
-        telegramUsername: data.telegramUsername || '',
-        telegramFirstName: data.telegramFirstName || '',
-        telegramLastName: data.telegramLastName || '',
-        discordId: data.discordId || '',
-        discordUsername: data.discordUsername || '',
-        email: data.email || ''
-      });
+        setFormUser({
+          telegramId: data.telegramId != null ? String(data.telegramId) : '',
+          telegramUsername: data.telegramUsername || '',
+          telegramFirstName: data.telegramFirstName || '',
+          telegramLastName: data.telegramLastName || '',
+          discordId: data.discordId || '',
+          discordUsername: data.discordUsername || '',
+          email: data.email || '',
+          googleDriveEmail: data.googleDriveEmail || ''
+        });
     } catch (e) {
       setError('Ошибка загрузки');
     } finally {
@@ -130,7 +135,8 @@ export default function UserEditPage() {
           telegramLastName: formUser.telegramLastName || null,
           discordId: formUser.discordId || null,
           discordUsername: formUser.discordUsername || null,
-          email: formUser.email || null
+          email: formUser.email || null,
+          googleDriveEmail: formUser.googleDriveEmail || null
         })
       });
       const data = await res.json();
@@ -147,7 +153,8 @@ export default function UserEditPage() {
         telegramLastName: formUser.telegramLastName || undefined,
         discordId: formUser.discordId || undefined,
         discordUsername: formUser.discordUsername || undefined,
-        email: formUser.email || undefined
+        email: formUser.email || undefined,
+        googleDriveEmail: formUser.googleDriveEmail || undefined
       } : null);
     } catch (e) {
       setError('Ошибка сохранения');
@@ -222,6 +229,59 @@ export default function UserEditPage() {
     }
   };
 
+  const handleRefreshAccesses = async () => {
+    setRefreshingAccesses(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch(`/api/users/${id}/refresh-accesses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setError(data.error || data.message || 'Не удалось обновить доступы');
+        return;
+      }
+
+      if (data.success) {
+        const granted: string[] = [];
+        if (data.results?.discord?.success) granted.push('Discord');
+        if (data.results?.notion?.success) granted.push('Notion');
+        if (data.results?.googleDrive?.success) granted.push('Google Drive');
+        
+        if (granted.length > 0) {
+          setSuccessMsg(`Доступы успешно обновлены: ${granted.join(', ')}`);
+        } else {
+          setSuccessMsg('Доступы обновлены (нет данных для выдачи доступа)');
+        }
+        // Перезагружаем данные пользователя
+        loadUser();
+      } else {
+        const errors: string[] = [];
+        if (data.results?.discord && !data.results.discord.success) {
+          errors.push(`Discord: ${data.results.discord.error || 'ошибка'}`);
+        }
+        if (data.results?.notion && !data.results.notion.success) {
+          errors.push(`Notion: ${data.results.notion.error || 'ошибка'}`);
+        }
+        if (data.results?.googleDrive && !data.results.googleDrive.success) {
+          errors.push(`Google Drive: ${data.results.googleDrive.error || 'ошибка'}`);
+        }
+        if (errors.length > 0) {
+          setError(`Доступы обновлены с ошибками: ${errors.join(', ')}`);
+        } else {
+          setSuccessMsg('Доступы обновлены');
+        }
+      }
+    } catch (e) {
+      setError('Ошибка при обновлении доступов');
+      console.error('Error refreshing accesses:', e);
+    } finally {
+      setRefreshingAccesses(false);
+    }
+  };
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '—';
@@ -259,6 +319,12 @@ export default function UserEditPage() {
         {error && (
           <div className="p-4 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
             {error}
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="p-4 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 text-sm">
+            {successMsg}
           </div>
         )}
         {successMsg && (
@@ -336,8 +402,8 @@ export default function UserEditPage() {
                   className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50"
                 />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm text-gray-400 mb-1">Email</label>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Email (Notion)</label>
                 <input
                   type="email"
                   value={formUser.email}
@@ -346,16 +412,36 @@ export default function UserEditPage() {
                   className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50"
                 />
               </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Google Drive Email</label>
+                <input
+                  type="email"
+                  value={formUser.googleDriveEmail}
+                  onChange={e => setFormUser(u => ({ ...u, googleDriveEmail: e.target.value }))}
+                  placeholder="user@example.com"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50"
+                />
+              </div>
             </div>
             <p className="text-xs text-gray-500 mb-4">Создан: {formatDate(user.createdAt)}</p>
-            <button
-              onClick={handleSaveUser}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 transition-all"
-            >
-              <Save className="h-4 w-4" />
-              {saving ? 'Сохранение...' : 'Сохранить данные пользователя'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleSaveUser}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 transition-all"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Сохранение...' : 'Сохранить данные пользователя'}
+              </button>
+              <button
+                onClick={handleRefreshAccesses}
+                disabled={refreshingAccesses}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-all"
+              >
+                <CheckCircle className="h-4 w-4" />
+                {refreshingAccesses ? 'Обновление...' : 'Обновить доступы'}
+              </button>
+            </div>
           </div>
         </div>
 

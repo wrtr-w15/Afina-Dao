@@ -45,6 +45,7 @@ interface NewUserForm {
   discordId: string;
   discordUsername: string;
   email: string;
+  googleDriveEmail: string;
   // Subscription fields
   createSubscription: boolean;
   subscriptionIsFree: boolean;
@@ -88,6 +89,7 @@ export default function UsersPage() {
     discordId: '',
     discordUsername: '',
     email: '',
+    googleDriveEmail: '',
     createSubscription: true,
     subscriptionIsFree: false,
     tariffId: '',
@@ -231,6 +233,7 @@ export default function UsersPage() {
           discordId: newUser.discordId || null,
           discordUsername: newUser.discordUsername || null,
           email: newUser.email || null,
+          googleDriveEmail: newUser.googleDriveEmail || null,
           // Subscription data
           createSubscription: newUser.createSubscription,
           subscriptionIsFree: newUser.subscriptionIsFree,
@@ -267,6 +270,7 @@ export default function UsersPage() {
       discordId: '', 
       discordUsername: '', 
       email: '',
+      googleDriveEmail: '',
       createSubscription: true,
       subscriptionIsFree: false,
       tariffId: '',
@@ -678,15 +682,27 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Email</label>
-                  <input
-                    type="email"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    placeholder="user@example.com"
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Email (Notion)</label>
+                    <input
+                      type="email"
+                      value={newUser.email}
+                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                      placeholder="user@example.com"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Google Drive Email</label>
+                    <input
+                      type="email"
+                      value={newUser.googleDriveEmail || ''}
+                      onChange={(e) => setNewUser({ ...newUser, googleDriveEmail: e.target.value })}
+                      placeholder="user@example.com"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 transition-all"
+                    />
+                  </div>
                 </div>
 
                 <p className="text-xs text-gray-500">

@@ -199,6 +199,7 @@ async function ensureTables(connection: any): Promise<void> {
         { name: 'discord_id', def: 'VARCHAR(50)' },
         { name: 'discord_username', def: 'VARCHAR(100)' },
         { name: 'email', def: 'VARCHAR(255)' },
+        { name: 'google_drive_email', def: 'VARCHAR(255)' },
         { name: 'created_at', def: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
         { name: 'updated_at', def: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
       ];
@@ -446,8 +447,8 @@ export async function POST(request: NextRequest) {
     const userId = crypto.randomUUID();
 
     await connection.execute(`
-      INSERT INTO users (id, telegram_id, telegram_username, telegram_first_name, discord_id, discord_username, email)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (id, telegram_id, telegram_username, telegram_first_name, discord_id, discord_username, email, google_drive_email)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       userId,
       data.telegramId || null,
@@ -455,7 +456,8 @@ export async function POST(request: NextRequest) {
       data.telegramFirstName || data.name || null,
       data.discordId || null,
       data.discordUsername || null,
-      data.email || null
+      data.email || null,
+      data.googleDriveEmail || null
     ]);
 
     // Создаём подписку если запрошено

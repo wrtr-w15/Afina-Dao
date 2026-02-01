@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/database';
 import { grantRole, revokeRole } from '@/lib/discord-bot';
 import { grantAccess, revokeAccess } from '@/lib/notion';
+import { grantAccess as grantGoogleDriveAccess, revokeAccess as revokeGoogleDriveAccess } from '@/lib/google-drive';
 import crypto from 'crypto';
 
 /** Приводит ISO-дату или Date к формату MySQL DATETIME (YYYY-MM-DD HH:MM:SS) */
@@ -144,7 +145,7 @@ export async function PUT(
 
     // Проверяем существование подписки (COLLATE устраняет смешение коллаций utf8mb4_unicode_ci / utf8mb4_0900_ai_ci)
     const [existing] = await connection.execute(`
-      SELECT s.*, u.discord_id, u.email 
+      SELECT s.*, u.discord_id, u.email, u.google_drive_email 
       FROM subscriptions s
       LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
       WHERE s.id = ?
@@ -231,6 +232,37 @@ export async function PUT(
             );
           }
         }
+
+        if (subscription.google_drive_email) {
+          try {
+            const googleDriveResult = await grantGoogleDriveAccess(
+              subscription.google_drive_email,
+              subscription.user_id,
+              id
+            );
+            if (googleDriveResult.success) {
+              try {
+                await connection.execute(
+                  'UPDATE subscriptions SET google_drive_access_granted = TRUE WHERE id = ?',
+                  [id]
+                );
+              } catch (e: any) {
+                // Если поле не существует, добавляем его
+                if (e.code === 'ER_BAD_FIELD_ERROR') {
+                  await connection.execute(
+                    'ALTER TABLE subscriptions ADD COLUMN google_drive_access_granted BOOLEAN DEFAULT FALSE'
+                  );
+                  await connection.execute(
+                    'UPDATE subscriptions SET google_drive_access_granted = TRUE WHERE id = ?',
+                    [id]
+                  );
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Failed to grant Google Drive access:', e);
+          }
+        }
       }
 
       // Если подписка стала неактивной - забираем доступы
@@ -250,6 +282,25 @@ export async function PUT(
             'UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?',
             [id]
           );
+        }
+
+        if (subscription.google_drive_email) {
+          try {
+            await revokeGoogleDriveAccess(subscription.google_drive_email);
+            try {
+              await connection.execute(
+                'UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?',
+                [id]
+              );
+            } catch (e: any) {
+              // Если поле не существует, игнорируем
+              if (e.code !== 'ER_BAD_FIELD_ERROR') {
+                console.error('Failed to update google_drive_access_granted:', e);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to revoke Google Drive access:', e);
+          }
         }
       }
     }

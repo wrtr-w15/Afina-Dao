@@ -93,6 +93,7 @@ export async function GET(
       discordId: user.discord_id,
       discordUsername: user.discord_username,
       email: user.email,
+      googleDriveEmail: user.google_drive_email,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
       availableTariffIds,
@@ -232,6 +233,10 @@ export async function PUT(
     if (data.email !== undefined) {
       updates.push('email = ?');
       values.push(data.email || null);
+    }
+    if (data.googleDriveEmail !== undefined) {
+      updates.push('google_drive_email = ?');
+      values.push(data.googleDriveEmail || null);
     }
 
     if (updates.length > 0) {

@@ -29,6 +29,20 @@ Email нужен для приглашения в Notion с гайдами.
   invalidEmail: `❌ <b>Неверный формат Email</b>
 
 Пожалуйста, введите корректный email адрес:`,
+  askGoogleDriveEmail: `📁 <b>Введите ваш Google Drive Email</b>
+
+Email нужен для предоставления доступа к Google Drive.
+
+Пример: <code>user@example.com</code>`,
+  invalidGoogleDriveEmail: `❌ <b>Неверный формат Email</b>
+
+Пожалуйста, введите корректный Google Drive email адрес:`,
+  confirmDisconnectGoogleDrive: `⚠️ <b>Отключить Google Drive Email?</b>
+
+Доступ к Google Drive будет отозван.`,
+  googleDriveDisconnected: `✅ <b>Google Drive Email отключён</b>
+
+Доступ к Google Drive был отозван.`,
   confirmOrder: `📝 <b>Подтверждение заказа</b>
 
 🎯 Тариф: <b>{{planName}}</b>
@@ -89,6 +103,7 @@ Email нужен для приглашения в Notion с гайдами.
 
 🎮 <b>Discord:</b> {{discordStatus}}
 📧 <b>Email (Notion):</b> {{emailStatus}}
+📁 <b>Google Drive:</b> {{googleDriveStatus}}
 
 Управляйте своими данными:`,
   cancelled: `❌ Действие отменено.
@@ -235,6 +250,8 @@ export const messages = {
     discordUsername?: string;
     emailConnected: boolean;
     email?: string;
+    googleDriveConnected?: boolean;
+    googleDriveEmail?: string;
   }): Promise<string> => {
     const subscriptionStatus = data.hasSubscription && data.endDate != null && data.daysLeft != null
       ? `✅ Активна до <b>${data.endDate}</b> (${data.daysLeft} дн.)`
@@ -245,7 +262,10 @@ export const messages = {
     const emailStatus = data.emailConnected && data.email
       ? `✅ <code>${data.email}</code>`
       : '❌ Не указан';
-    return await text('account', { subscriptionStatus, discordStatus, emailStatus });
+    const googleDriveStatus = data.googleDriveConnected && data.googleDriveEmail
+      ? `✅ <code>${data.googleDriveEmail}</code>`
+      : '❌ Не указан';
+    return await text('account', { subscriptionStatus, discordStatus, emailStatus, googleDriveStatus });
   },
 
   cancelled: (): Promise<string> => text('cancelled'),
@@ -260,5 +280,10 @@ export const messages = {
   
   paymentHistoryEmpty: (): Promise<string> => text('paymentHistory_empty'),
   
-  askPromocode: (): Promise<string> => text('askPromocode')
+  askPromocode: (): Promise<string> => text('askPromocode'),
+  
+  askGoogleDriveEmail: (): Promise<string> => text('askGoogleDriveEmail'),
+  invalidGoogleDriveEmail: (): Promise<string> => text('invalidGoogleDriveEmail'),
+  confirmDisconnectGoogleDrive: (): Promise<string> => text('confirmDisconnectGoogleDrive'),
+  googleDriveDisconnected: (): Promise<string> => text('googleDriveDisconnected')
 };

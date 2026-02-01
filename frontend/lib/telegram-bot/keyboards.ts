@@ -103,6 +103,7 @@ export function getAccountKeyboard(options: {
   hasSubscription: boolean;
   discordConnected: boolean;
   emailConnected: boolean;
+  googleDriveConnected: boolean;
   discordOAuthUrl?: string;
 }): InlineKeyboard {
   const buttons: InlineButton[][] = [];
@@ -124,7 +125,7 @@ export function getAccountKeyboard(options: {
     buttons.push([{ text: '🎮 Подключить Discord', url: options.discordOAuthUrl }]);
   }
   
-  // Email
+  // Email (для Notion)
   if (options.emailConnected) {
     buttons.push([
       { text: '📧 Изменить Email', callback_data: 'change_email' },
@@ -132,6 +133,16 @@ export function getAccountKeyboard(options: {
     ]);
   } else {
     buttons.push([{ text: '📧 Указать Email', callback_data: 'change_email' }]);
+  }
+  
+  // Google Drive Email
+  if (options.googleDriveConnected) {
+    buttons.push([
+      { text: '📁 Изменить Google Drive Email', callback_data: 'change_google_drive_email' },
+      { text: '🔌 Отключить', callback_data: 'disconnect_google_drive' }
+    ]);
+  } else {
+    buttons.push([{ text: '📁 Указать Google Drive Email', callback_data: 'change_google_drive_email' }]);
   }
 
   buttons.push([{ text: '🔄 Обновить информацию', callback_data: 'refresh_account_info' }]);
@@ -146,6 +157,25 @@ export function getEmailInputKeyboard(): InlineKeyboard {
   return {
     inline_keyboard: [
       [{ text: '◀️ Назад', callback_data: 'back_to_account' }]
+    ]
+  };
+}
+
+// Клавиатура ввода Google Drive email
+export function getGoogleDriveEmailInputKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '◀️ Назад', callback_data: 'account' }]
+    ]
+  };
+}
+
+// Клавиатура подтверждения отключения Google Drive
+export function getConfirmDisconnectGoogleDriveKeyboard(): InlineKeyboard {
+  return {
+    inline_keyboard: [
+      [{ text: '✅ Да, отключить', callback_data: 'confirm_disconnect_google_drive' }],
+      [{ text: '❌ Отмена', callback_data: 'account' }]
     ]
   };
 }

@@ -13,6 +13,8 @@ import {
   getSuccessKeyboard,
   getAccountKeyboard,
   getEmailInputKeyboard,
+  getGoogleDriveEmailInputKeyboard,
+  getConfirmDisconnectGoogleDriveKeyboard,
   getSocialsKeyboard,
   getConfirmDisconnectDiscordKeyboard,
   getConfirmDisconnectEmailKeyboard,
@@ -385,10 +387,13 @@ export async function handleAccount(message: any): Promise<void> {
     }
     
     const discordOAuthUrl = getDiscordOAuthUrl(message.from.id);
-    const accountKeyboard = await getBotButtons('account', { discordOAuthUrl }) ?? getAccountKeyboard({
+    // Всегда используем функцию по умолчанию для account, так как она динамически формирует кнопки на основе состояния пользователя
+    // Кнопки из БД статичны и не учитывают текущее состояние подключений
+    const accountKeyboard = getAccountKeyboard({
       hasSubscription: !!subscription,
       discordConnected: !!user?.discord_id,
       emailConnected: !!user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
       discordOAuthUrl
     });
     await sendMessage(chatId, await messages.account({
@@ -398,7 +403,9 @@ export async function handleAccount(message: any): Promise<void> {
       discordConnected: !!user?.discord_id,
       discordUsername: user?.discord_username,
       emailConnected: !!user?.email,
-      email: user?.email
+      email: user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
+      googleDriveEmail: user?.google_drive_email
     }), accountKeyboard);
   } catch (error) {
     console.error('Error in handleAccount:', error);
@@ -698,6 +705,8 @@ export async function handleEmailInput(message: any): Promise<void> {
     const connection = await getConnection();
     try {
       await connection.execute('UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?', [email, telegramId]);
+      // Инвалидируем кэш данных пользователя
+      userDataCache.delete(telegramId);
     } finally {
       connection.release();
     }
@@ -1142,6 +1151,8 @@ export async function handleAccountCallback(callbackQuery: any): Promise<void> {
       daysLeft = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     }
     
+    console.log(`[Telegram Bot] User google_drive_email:`, user?.google_drive_email);
+    
     const accountText = await messages.account({
       hasSubscription: !!subscription,
       endDate,
@@ -1149,18 +1160,24 @@ export async function handleAccountCallback(callbackQuery: any): Promise<void> {
       discordConnected: !!user?.discord_id,
       discordUsername: user?.discord_username,
       emailConnected: !!user?.email,
-      email: user?.email
+      email: user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
+      googleDriveEmail: user?.google_drive_email
     });
     
     console.log(`[Telegram Bot] Account text length: ${accountText.length}`);
     
     const discordOAuthUrl = getDiscordOAuthUrl(telegramId);
-    const accountKeyboard = await getBotButtons('account', { discordOAuthUrl }) ?? getAccountKeyboard({
+    // Всегда используем функцию по умолчанию для account, так как она динамически формирует кнопки на основе состояния пользователя
+    // Кнопки из БД статичны и не учитывают текущее состояние подключений
+    const accountKeyboard = getAccountKeyboard({
       hasSubscription: !!subscription,
       discordConnected: !!user?.discord_id,
       emailConnected: !!user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
       discordOAuthUrl
     });
+    console.log(`[Telegram Bot] Account keyboard buttons count:`, accountKeyboard.inline_keyboard?.length || 0);
     
     console.log(`[Telegram Bot] Account keyboard:`, JSON.stringify(accountKeyboard).substring(0, 200));
     
@@ -1241,6 +1258,8 @@ export async function handleConfirmDisconnectDiscord(callbackQuery: any): Promis
         // TODO: Снять роль в Discord
       }
       await connection.execute('UPDATE users SET discord_id = NULL, discord_username = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?', [telegramId]);
+      // Инвалидируем кэш данных пользователя
+      userDataCache.delete(telegramId);
     } finally {
       connection.release();
     }
@@ -1275,6 +1294,8 @@ export async function handleConfirmDisconnectEmail(callbackQuery: any): Promise<
         // TODO: Отозвать доступ к Notion
       }
       await connection.execute('UPDATE users SET email = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?', [telegramId]);
+      // Инвалидируем кэш данных пользователя
+      userDataCache.delete(telegramId);
     } finally {
       connection.release();
     }
@@ -1282,6 +1303,261 @@ export async function handleConfirmDisconnectEmail(callbackQuery: any): Promise<
   } catch (error) {
     console.error('Error in handleConfirmDisconnectEmail:', error);
     await sendMessage(chatId, await messages.error());
+  }
+}
+
+// Обработчики для Google Drive Email
+export async function handleEnterGoogleDriveEmail(callbackQuery: any): Promise<void> {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const telegramId = callbackQuery.from.id;
+  
+  console.log(`[Telegram Bot] handleEnterGoogleDriveEmail called for user ${telegramId}`);
+  
+  try {
+    const answerResult = await answerCallback(callbackQuery.id);
+    console.log(`[Telegram Bot] Callback answered:`, answerResult);
+    
+    await saveUserState(telegramId, 'entering_google_drive_email', { returnTo: 'account' });
+    
+    const googleDriveEmailText = await messages.askGoogleDriveEmail();
+    console.log(`[Telegram Bot] Google Drive email text:`, googleDriveEmailText);
+    
+    try {
+      const editResult = await editMessage(chatId, messageId, googleDriveEmailText, getGoogleDriveEmailInputKeyboard());
+      console.log(`[Telegram Bot] Message edited successfully:`, editResult);
+    } catch (editError: any) {
+      console.error(`[Telegram Bot] Edit message error:`, editError);
+      if (editError?.error_code === 400 || editError?.description?.includes('message') || editError?.description?.includes('not modified')) {
+        console.log(`[Telegram Bot] Falling back to sendMessage`);
+        const sendResult = await sendMessage(chatId, googleDriveEmailText, getGoogleDriveEmailInputKeyboard());
+        console.log(`[Telegram Bot] Message sent:`, sendResult);
+      } else {
+        throw editError;
+      }
+    }
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleEnterGoogleDriveEmail:', error);
+    console.error('[Telegram Bot] Error stack:', error?.stack);
+    try {
+      await sendMessage(chatId, await messages.error());
+    } catch (sendError) {
+      console.error('[Telegram Bot] Error sending error message:', sendError);
+    }
+  }
+}
+
+export async function handleGoogleDriveEmailInput(message: any): Promise<void> {
+  const chatId = message.chat.id;
+  const telegramId = message.from.id;
+  const email = message.text.trim().toLowerCase();
+  
+  console.log(`[Telegram Bot] handleGoogleDriveEmailInput called for user ${telegramId}, email: ${email}`);
+  
+  try {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      await sendMessage(chatId, await messages.invalidGoogleDriveEmail(), getGoogleDriveEmailInputKeyboard());
+      return;
+    }
+    
+    const connection = await getConnection();
+    try {
+      // Получаем старый email перед обновлением
+      const user = await getUserData(telegramId);
+      const oldEmail = user?.google_drive_email;
+      
+      await connection.execute(
+        'UPDATE users SET google_drive_email = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?',
+        [email, telegramId]
+      );
+      console.log(`[Telegram Bot] Google Drive email saved: ${email}`);
+      // Инвалидируем кэш данных пользователя
+      userDataCache.delete(telegramId);
+      
+      // Если у пользователя есть активная подписка, обновляем доступ к Google Drive
+      const { id: userId } = await getOrCreateUser({ id: telegramId });
+      const activeSubscription = await getActiveSubscription(userId);
+      
+      if (activeSubscription) {
+        try {
+          const { grantAccess, revokeAccess } = await import('@/lib/google-drive');
+          
+          // Отзываем доступ для старого email, если он был изменен
+          if (oldEmail && oldEmail !== email) {
+            const revokeResult = await revokeAccess(oldEmail);
+            if (revokeResult.success) {
+              console.log(`[Telegram Bot] Google Drive access revoked for old email: ${oldEmail}`);
+            }
+          }
+          
+          // Выдаем доступ для нового email
+          const grantResult = await grantAccess(email, userId, activeSubscription.id);
+          if (grantResult.success) {
+            console.log(`[Telegram Bot] Google Drive access granted for ${email}`);
+            // Обновляем статус выдачи доступа в подписке
+            try {
+              await connection.execute(
+                `UPDATE subscriptions SET google_drive_access_granted = TRUE WHERE id = ?`,
+                [activeSubscription.id]
+              );
+            } catch (e: any) {
+              // Если поле не существует, добавляем его
+              if (e.code === 'ER_BAD_FIELD_ERROR') {
+                try {
+                  await connection.execute(
+                    'ALTER TABLE subscriptions ADD COLUMN google_drive_access_granted BOOLEAN DEFAULT FALSE'
+                  );
+                  await connection.execute(
+                    'UPDATE subscriptions SET google_drive_access_granted = TRUE WHERE id = ?',
+                    [activeSubscription.id]
+                  );
+                } catch (alterError) {
+                  console.error('Failed to add google_drive_access_granted column:', alterError);
+                }
+              } else {
+                console.error('Failed to update google_drive_access_granted:', e);
+              }
+            }
+          } else {
+            console.error(`[Telegram Bot] Failed to grant Google Drive access:`, grantResult.error);
+          }
+        } catch (e) {
+          console.error('[Telegram Bot] Error managing Google Drive access:', e);
+        }
+      }
+    } finally {
+      connection.release();
+    }
+    
+    await clearUserState(telegramId);
+    await sendMessage(chatId, `✅ Google Drive Email сохранён: <code>${email}</code>`, getBackToMainKeyboard());
+  } catch (error) {
+    console.error('[Telegram Bot] Error in handleGoogleDriveEmailInput:', error);
+    await sendMessage(chatId, await messages.error());
+  }
+}
+
+export async function handleChangeGoogleDriveEmail(callbackQuery: any): Promise<void> {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const telegramId = callbackQuery.from.id;
+  
+  console.log(`[Telegram Bot] handleChangeGoogleDriveEmail called for user ${telegramId}`);
+  
+  try {
+    const answerResult = await answerCallback(callbackQuery.id);
+    console.log(`[Telegram Bot] Callback answered:`, answerResult);
+    
+    await saveUserState(telegramId, 'changing_google_drive_email', { returnTo: 'account' });
+    
+    const googleDriveEmailText = await messages.askGoogleDriveEmail();
+    
+    try {
+      const editResult = await editMessage(chatId, messageId, googleDriveEmailText, getGoogleDriveEmailInputKeyboard());
+      console.log(`[Telegram Bot] Message edited successfully:`, editResult);
+    } catch (editError: any) {
+      console.error(`[Telegram Bot] Edit message error:`, editError);
+      if (editError?.error_code === 400 || editError?.description?.includes('message') || editError?.description?.includes('not modified')) {
+        console.log(`[Telegram Bot] Falling back to sendMessage`);
+        const sendResult = await sendMessage(chatId, googleDriveEmailText, getGoogleDriveEmailInputKeyboard());
+        console.log(`[Telegram Bot] Message sent:`, sendResult);
+      } else {
+        throw editError;
+      }
+    }
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleChangeGoogleDriveEmail:', error);
+    console.error('[Telegram Bot] Error stack:', error?.stack);
+    try {
+      await sendMessage(chatId, await messages.error());
+    } catch (sendError) {
+      console.error('[Telegram Bot] Error sending error message:', sendError);
+    }
+  }
+}
+
+export async function handleDisconnectGoogleDrive(callbackQuery: any): Promise<void> {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const telegramId = callbackQuery.from.id;
+  
+  console.log(`[Telegram Bot] handleDisconnectGoogleDrive called for user ${telegramId}`);
+  
+  try {
+    const answerResult = await answerCallback(callbackQuery.id);
+    console.log(`[Telegram Bot] Callback answered:`, answerResult);
+    
+    const disconnectText = await messages.confirmDisconnectGoogleDrive();
+    
+    try {
+      const editResult = await editMessage(chatId, messageId, disconnectText, getConfirmDisconnectGoogleDriveKeyboard());
+      console.log(`[Telegram Bot] Message edited successfully:`, editResult);
+    } catch (editError: any) {
+      console.error(`[Telegram Bot] Edit message error:`, editError);
+      if (editError?.error_code === 400 || editError?.description?.includes('message') || editError?.description?.includes('not modified')) {
+        console.log(`[Telegram Bot] Falling back to sendMessage`);
+        const sendResult = await sendMessage(chatId, disconnectText, getConfirmDisconnectGoogleDriveKeyboard());
+        console.log(`[Telegram Bot] Message sent:`, sendResult);
+      } else {
+        throw editError;
+      }
+    }
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleDisconnectGoogleDrive:', error);
+    console.error('[Telegram Bot] Error stack:', error?.stack);
+    try {
+      await sendMessage(chatId, await messages.error());
+    } catch (sendError) {
+      console.error('[Telegram Bot] Error sending error message:', sendError);
+    }
+  }
+}
+
+export async function handleConfirmDisconnectGoogleDrive(callbackQuery: any): Promise<void> {
+  const chatId = callbackQuery.message.chat.id;
+  const telegramId = callbackQuery.from.id;
+  
+  console.log(`[Telegram Bot] handleConfirmDisconnectGoogleDrive called for user ${telegramId}`);
+  
+  try {
+    const answerResult = await answerCallback(callbackQuery.id);
+    console.log(`[Telegram Bot] Callback answered:`, answerResult);
+    
+    const connection = await getConnection();
+    try {
+      const user = await getUserData(telegramId);
+      if (user?.google_drive_email) {
+        console.log(`Revoking Google Drive access for ${user.google_drive_email}`);
+        try {
+          const { revokeAccess } = await import('@/lib/google-drive');
+          const result = await revokeAccess(user.google_drive_email);
+          if (result.success) {
+            console.log(`[Google Drive] Access revoked successfully for ${user.google_drive_email}`);
+          } else {
+            console.error(`[Google Drive] Failed to revoke access:`, result.error);
+          }
+        } catch (e) {
+          console.error('[Google Drive] Error revoking access:', e);
+        }
+      }
+      await connection.execute(
+        'UPDATE users SET google_drive_email = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?',
+        [telegramId]
+      );
+      console.log(`[Telegram Bot] Google Drive email disconnected`);
+    } finally {
+      connection.release();
+    }
+    
+    await sendMessage(chatId, await messages.googleDriveDisconnected(), getBackToMainKeyboard());
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleConfirmDisconnectGoogleDrive:', error);
+    console.error('[Telegram Bot] Error stack:', error?.stack);
+    try {
+      await sendMessage(chatId, await messages.error());
+    } catch (sendError) {
+      console.error('[Telegram Bot] Error sending error message:', sendError);
+    }
   }
 }
 
@@ -1316,6 +1592,7 @@ export async function handleBackToAccount(callbackQuery: any): Promise<void> {
       hasSubscription: !!subscription,
       discordConnected: !!user?.discord_id,
       emailConnected: !!user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
       discordOAuthUrl
     });
     
@@ -1327,7 +1604,9 @@ export async function handleBackToAccount(callbackQuery: any): Promise<void> {
         discordConnected: !!user?.discord_id,
         discordUsername: user?.discord_username,
         emailConnected: !!user?.email,
-        email: user?.email
+        email: user?.email,
+        googleDriveConnected: !!user?.google_drive_email,
+        googleDriveEmail: user?.google_drive_email
       }), accountKeyboard);
     } catch (editError: any) {
       // Если не удалось отредактировать, отправляем новое сообщение
@@ -1339,7 +1618,9 @@ export async function handleBackToAccount(callbackQuery: any): Promise<void> {
           discordConnected: !!user?.discord_id,
           discordUsername: user?.discord_username,
           emailConnected: !!user?.email,
-          email: user?.email
+          email: user?.email,
+          googleDriveConnected: !!user?.google_drive_email,
+          googleDriveEmail: user?.google_drive_email
         }), accountKeyboard);
       } else {
         throw editError;
@@ -1386,6 +1667,7 @@ export async function handleRefreshAccountInfo(callbackQuery: any): Promise<void
         hasSubscription: !!subscription,
         discordConnected: !!user?.discord_id,
         emailConnected: !!user?.email,
+        googleDriveConnected: !!user?.google_drive_email,
         discordOAuthUrl: getDiscordOAuthUrl(from.id)
       })
     );
