@@ -18,10 +18,12 @@ export const dbConfig = {
 export const pool = mysql.createPool({
   ...dbConfig,
   waitForConnections: true,
-  connectionLimit: 10, // Максимум 10 одновременных соединений
+  connectionLimit: 50, // Увеличено для большого количества пользователей
   queueLimit: 0, // Без ограничения очереди
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  acquireTimeout: 60000, // 60 секунд на получение соединения
+  timeout: 60000, // 60 секунд таймаут запросов
 });
 
 // Хелпер для безопасного получения соединения из pool

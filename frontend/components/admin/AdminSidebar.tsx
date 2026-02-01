@@ -15,7 +15,11 @@ import {
   CreditCard,
   Receipt,
   Wallet,
-  MessageCircle
+  MessageCircle,
+  BarChart3,
+  Link2,
+  Image,
+  Ticket
 } from 'lucide-react';
 import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
 
@@ -92,6 +96,13 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
       color: 'from-green-500 to-emerald-500'
     },
     {
+      id: 'statistics',
+      label: 'Статистика',
+      icon: BarChart3,
+      path: '/admin/statistics',
+      color: 'from-cyan-500 to-teal-500'
+    },
+    {
       id: 'tariffs',
       label: 'Тарифы',
       icon: Wallet,
@@ -104,6 +115,27 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
       icon: MessageCircle,
       path: '/admin/telegram',
       color: 'from-sky-500 to-blue-500'
+    },
+    {
+      id: 'contact-links',
+      label: 'Ссылки контактов',
+      icon: Link2,
+      path: '/admin/contact-links',
+      color: 'from-cyan-500 to-sky-500'
+    },
+    {
+      id: 'uploads',
+      label: 'Медиа',
+      icon: Image,
+      path: '/admin/uploads',
+      color: 'from-fuchsia-500 to-pink-500'
+    },
+    {
+      id: 'promocodes',
+      label: 'Промокоды',
+      icon: Ticket,
+      path: '/admin/promocodes',
+      color: 'from-orange-500 to-red-500'
     },
     {
       id: 'settings',

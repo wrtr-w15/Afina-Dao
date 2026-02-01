@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { normalizeErrorMessage } from '@/lib/error-utils';
 import { 
   Wallet, 
   Plus, 
@@ -201,7 +202,7 @@ export default function TariffsPage() {
       resetForm();
       loadTariffs();
     } catch (error) {
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Ошибка обновления' });
+      setMessage({ type: 'error', text: normalizeErrorMessage(error) || 'Ошибка обновления' });
     } finally {
       setSaving(false);
     }
@@ -274,7 +275,7 @@ export default function TariffsPage() {
       setMessage({ type: 'success', text: 'Тариф удалён' });
       loadTariffs();
     } catch (error) {
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Ошибка удаления' });
+      setMessage({ type: 'error', text: normalizeErrorMessage(error) || 'Ошибка удаления' });
     }
   };
 

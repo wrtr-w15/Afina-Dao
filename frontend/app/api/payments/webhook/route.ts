@@ -67,7 +67,11 @@ async function handlePaymentSuccess(connection: any, data: any): Promise<void> {
   const externalId = data.id || data.payment_id || data.transaction_id;
   
   const [payments] = await connection.execute(
-    'SELECT p.*, s.user_id, s.id as sub_id, u.discord_id, u.email, u.telegram_id FROM payments p LEFT JOIN subscriptions s ON p.subscription_id = s.id LEFT JOIN users u ON s.user_id = u.id WHERE p.external_id = ?',
+    `SELECT p.*, s.user_id, s.id as sub_id, u.discord_id, u.email, u.telegram_id 
+     FROM payments p 
+     LEFT JOIN subscriptions s ON p.subscription_id COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci 
+     LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci 
+     WHERE p.external_id = ?`,
     [externalId]
   );
 
@@ -156,7 +160,9 @@ async function handlePaymentFailed(connection: any, data: any): Promise<void> {
   const errorMessage = data.error?.message || data.failure_message || 'Payment failed';
 
   const [payments] = await connection.execute(
-    'SELECT p.*, u.telegram_id FROM payments p LEFT JOIN users u ON p.user_id = u.id WHERE p.external_id = ?',
+    `SELECT p.*, u.telegram_id FROM payments p 
+     LEFT JOIN users u ON p.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci 
+     WHERE p.external_id = ?`,
     [externalId]
   );
 

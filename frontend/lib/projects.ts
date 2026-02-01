@@ -8,30 +8,31 @@ const API_BASE_URL = typeof window !== 'undefined' ? window.location.origin : ''
 // Вспомогательная функция для обработки ошибок API
 async function handleApiResponse(response: Response) {
   if (!response.ok) {
-    let errorMessage = 'API request failed';
-    let errorDetails = {};
-    
-    try {
-      const error = await response.json();
-      console.log('API Error Response:', error);
-      errorDetails = error;
-      errorMessage = error.error || error.message || error.details || `HTTP ${response.status}: ${response.statusText}`;
-    } catch (parseError) {
-      console.error('Failed to parse error response:', parseError);
-      errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    let errorDetails: Record<string, unknown> = {};
+
+    const text = await response.text();
+    if (text) {
+      try {
+        const error = JSON.parse(text) as Record<string, unknown>;
+        errorDetails = error;
+        const msg = error.error ?? error.message ?? error.details;
+        if (msg != null && String(msg).trim()) {
+          errorMessage = String(msg);
+        }
+      } catch {
+        if (text.length < 200) {
+          errorDetails = { body: text };
+        }
+      }
     }
-    
-    console.error('API Error:', {
-      status: response.status,
-      statusText: response.statusText,
-      url: response.url,
-      errorMessage,
-      errorDetails
-    });
-    
+
+    console.error('API Error:', response.status, response.statusText, response.url, errorMessage, errorDetails);
+
     throw new Error(errorMessage);
   }
-  return response.json();
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }
 
 // Получить все проекты
@@ -165,17 +166,17 @@ export const updateProject = async (id: string, data: any): Promise<Project | nu
       },
       body: JSON.stringify(cleanData),
     });
-    
-    const result = await handleApiResponse(response);
-    
+
+    await handleApiResponse(response);
+
     // Очищаем кэш сайдбара
     if (typeof window !== 'undefined') {
       localStorage.removeItem('sidebar_projects');
       window.dispatchEvent(new Event('sidebarCacheInvalidated'));
     }
-    
-    // Возвращаем обновленный проект
-    return await getProjectById(id);
+
+    // Успех — не вызываем getProjectById, чтобы не падать из-за возможной ошибки GET
+    return null;
   } catch (error) {
     console.error('Error updating project:', error);
     return null;

@@ -4,6 +4,7 @@ import './globals.css';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getLocale } from 'next-intl/server';
+import ErrorHandler from '../components/ErrorHandler';
 
 const montserrat = Montserrat({ subsets: ['latin'] });
 
@@ -27,30 +28,105 @@ export default async function RootLayout({
   
   return (
     <html lang={locale}>
-      <body className={montserrat.className}>
+      <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              // Suppress browser extension errors (e.g., MetaMask, Web3 wallets)
-              if (typeof window !== 'undefined') {
-                const originalError = console.error;
-                console.error = function(...args) {
-                  const errorMessage = args.join(' ');
-                  // Filter out common browser extension errors
-                  if (
-                    errorMessage.includes('Cannot redefine property: ethereum') ||
-                    errorMessage.includes('chrome-extension://') ||
-                    errorMessage.includes('moz-extension://') ||
-                    errorMessage.includes('evmAsk.js')
-                  ) {
-                    return; // Suppress these errors
+              // CRITICAL: This must run BEFORE Next.js devtools loads
+              // Prevent "[object Event]" from unhandled promise rejections
+              (function() {
+                if (typeof window === 'undefined') return;
+                
+                // Store original handlers before Next.js can override them
+                var originalAddEventListener = window.addEventListener;
+                var handlers = [];
+                
+                // Override addEventListener to intercept unhandledrejection handlers
+                window.addEventListener = function(type, listener, options) {
+                  if (type === 'unhandledrejection') {
+                    // Wrap listener to check for Event objects first
+                    var wrapped = function(e) {
+                      var r = e.reason;
+                      var isEvent = false;
+                      
+                      if (r == null) {
+                        isEvent = false;
+                      } else if (typeof r === 'string') {
+                        isEvent = r === '[object Event]' || r.trim() === '[object Event]';
+                      } else if (typeof r === 'object') {
+                        var cn = r.constructor?.name || (r.constructor && r.constructor.toString().match(/function\\s+(\\w+)/)?.[1]);
+                        isEvent = cn === 'Event' || cn === 'SyntheticEvent' || cn === 'AbortError' ||
+                                 r.constructor === Event || (r instanceof Event) ||
+                                 String(r) === '[object Event]' ||
+                                 (r.type && (r.target !== undefined || r.currentTarget !== undefined));
+                      }
+                      
+                      if (isEvent) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return false;
+                      }
+                      
+                      // Call original listener if not prevented
+                      if (listener) return listener.call(this, e);
+                    };
+                    handlers.push({ original: listener, wrapped: wrapped });
+                    return originalAddEventListener.call(this, type, wrapped, options);
                   }
-                  originalError.apply(console, args);
+                  return originalAddEventListener.call(this, type, listener, options);
                 };
-              }
+                
+                // Set up our own handler with highest priority
+                originalAddEventListener.call(window, 'unhandledrejection', function(e) {
+                  var r = e.reason;
+                  var isEvent = false;
+                  
+                  if (r == null) {
+                    isEvent = false;
+                  } else if (typeof r === 'string') {
+                    isEvent = r === '[object Event]' || r.trim() === '[object Event]';
+                  } else if (typeof r === 'object') {
+                    var cn = r.constructor?.name || (r.constructor && r.constructor.toString().match(/function\\s+(\\w+)/)?.[1]);
+                    isEvent = cn === 'Event' || cn === 'SyntheticEvent' || cn === 'AbortError' ||
+                             r.constructor === Event || (r instanceof Event) ||
+                             String(r) === '[object Event]' ||
+                             (r.type && (r.target !== undefined || r.currentTarget !== undefined));
+                  }
+                  
+                  if (isEvent) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                  }
+                }, true);
+                
+                // Suppress console.error for Event objects
+                var originalConsoleError = console.error;
+                console.error = function() {
+                  for (var i = 0; i < arguments.length; i++) {
+                    var arg = arguments[i];
+                    if (typeof arg === 'string' && arg === '[object Event]') return;
+                    if (arg && typeof arg === 'object' && (arg.constructor?.name === 'Event' || String(arg) === '[object Event]')) return;
+                  }
+                  var msg = Array.prototype.join.call(arguments, ' ');
+                  if (msg.includes('[object Event]') || 
+                      msg.includes('Cannot redefine property: ethereum') ||
+                      msg.includes('chrome-extension://') ||
+                      msg.includes('moz-extension://') ||
+                      msg.includes('evmAsk.js')) {
+                    return;
+                  }
+                  originalConsoleError.apply(console, arguments);
+                };
+              })();
             `,
           }}
         />
+      </head>
+      <body className={montserrat.className}>
+        <ErrorHandler />
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider>
             {children}

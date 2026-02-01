@@ -22,6 +22,7 @@ import { Category } from '../../../../types/category';
 import { createProject } from '../../../../lib/projects';
 import { getCategories } from '../../../../lib/categories';
 import DOMPurify from 'isomorphic-dompurify';
+import { normalizeErrorMessage } from '../../../../lib/error-utils';
 
 export default function CreateProjectPage() {
   const router = useRouter();
@@ -163,7 +164,7 @@ export default function CreateProjectPage() {
       }, 1500);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Произошла ошибка');
+      setError(normalizeErrorMessage(err) || 'Произошла ошибка');
     } finally {
       setIsLoading(false);
     }

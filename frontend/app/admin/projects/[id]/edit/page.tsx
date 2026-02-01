@@ -14,6 +14,7 @@ import { getCategories } from '@/lib/categories';
 import { Category } from '@/types/category';
 import { parseMarkdownSections } from '@/types/project';
 import DOMPurify from 'isomorphic-dompurify';
+import { normalizeErrorMessage } from '@/lib/error-utils';
 
 interface ProjectTranslation {
   locale: string;
@@ -122,7 +123,7 @@ export default function EditProjectPage() {
       }, 1500);
     } catch (err) {
       console.error('Error saving project:', err);
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения проекта');
+      setError(normalizeErrorMessage(err) || 'Ошибка сохранения проекта');
     } finally {
       setIsSaving(false);
     }
@@ -311,17 +312,36 @@ export default function EditProjectPage() {
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Баннер проекта (URL)
               </label>
-              <Input
-                value={formData.image}
-                onChange={(e) => setFormData(prev => ({ ...prev, image: e.target.value }))}
-                placeholder="https://example.com/image.png"
-                leftIcon={<Image className="h-4 w-4" />}
-                className="bg-white/5 border-white/10 text-white"
-              />
+              <div className="space-y-3">
+                <Input
+                  value={formData.image}
+                  onChange={(e) => setFormData(prev => ({ ...prev, image: e.target.value }))}
+                  placeholder="https://example.com/image.png или /api/uploads/xxx"
+                  leftIcon={<Image className="h-4 w-4" />}
+                  className="bg-white/5 border-white/10 text-white"
+                />
+                {formData.image && (
+                  <div className="relative w-full max-w-2xl aspect-video rounded-lg overflow-hidden border border-white/10 bg-black/20">
+                    <img
+                      src={formData.image}
+                      alt="Превью баннера"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-500 text-sm">Изображение не загружено. Проверьте URL.</div>';
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </Card>

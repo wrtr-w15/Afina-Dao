@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useLocale } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import Layout from '@/components/LayoutComponent';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -20,6 +20,7 @@ export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
   const locale = useLocale();
+  const t = useTranslations('project');
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<number>(0);
@@ -122,12 +123,12 @@ export default function ProjectPage() {
   if (loading) {
     return (
       <Layout 
-        title="Загрузка проекта - Afina DAO Wiki"
-        description="Загрузка информации о проекте"
+        title={`${t('loading')} - Afina DAO Wiki`}
+        description={t('loading')}
         showSidebar={true}
       >
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-400">Загрузка...</div>
+          <div className="text-gray-400">{t('loading')}</div>
         </div>
       </Layout>
     );
@@ -190,8 +191,8 @@ export default function ProjectPage() {
       .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded text-blue-300 text-sm">$1</code>')
       .replace(/^- (.*$)/gim, '<li class="ml-4 text-gray-300 mb-1">• $1</li>')
       .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 text-gray-300 mb-1">$1</li>')
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg max-w-full my-4 w-full object-cover" />')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">$1</a>')
-      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg max-w-full my-4" />')
       .replace(/\n\n/g, '</p><p class="mb-4 text-gray-300">')
       .replace(/\n/g, '<br>');
     
@@ -210,12 +211,21 @@ export default function ProjectPage() {
       <div className="space-y-8">
         {/* Project Banner */}
         {project.image && (
-          <div className="relative w-full h-64 md:h-80 rounded-lg overflow-hidden">
+          <div className="relative w-full h-64 md:h-96 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/20">
             <img 
               src={project.image} 
               alt={`Баннер ${translatedContent.name}`}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  parent.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-500">Изображение не загружено</div>';
+                }
+              }}
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
           </div>
         )}
 
@@ -230,7 +240,7 @@ export default function ProjectPage() {
             </Badge>
             <div className="flex items-center text-sm text-gray-400">
               <Calendar className="h-4 w-4 mr-1" />
-              Создан: {formatDate(project.createdAt)}
+              {t('created')}: {formatDate(project.createdAt)}
             </div>
           </div>
         </div>
@@ -244,7 +254,7 @@ export default function ProjectPage() {
               {translatedContent.description && (
                 <div className="border-b border-white/10 pb-8">
                   <h2 className="text-2xl font-bold text-white mb-4">
-                    Описание
+                    {t('description')}
                   </h2>
                   <div className="text-lg text-gray-300 leading-relaxed">
                     {translatedContent.description}
@@ -327,7 +337,7 @@ export default function ProjectPage() {
         {(project.website || project.telegramPost) && (
           <div className="border-t border-white/10 pt-8 max-w-7xl mx-auto">
             <h2 className="text-xl font-semibold text-white mb-4">
-              Ссылки проекта
+              {t('projectLinks')}
             </h2>
             
             <div className="flex flex-wrap gap-4">

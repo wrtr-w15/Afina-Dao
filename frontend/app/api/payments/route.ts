@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/database';
 
+// Безопасный парсинг provider_data (MySQL может вернуть объект или строку)
+function parseProviderData(providerData: unknown): Record<string, unknown> | null {
+  if (providerData == null) return null;
+  if (typeof providerData === 'object' && providerData !== null && !Array.isArray(providerData)) {
+    return providerData as Record<string, unknown>;
+  }
+  if (typeof providerData === 'string') {
+    if (providerData === '[object Object]') return {};
+    try {
+      return JSON.parse(providerData) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return null;
+}
+
 // GET /api/payments - список платежей (админ)
 export async function GET(request: NextRequest) {
   const { checkAdminAuth } = await import('@/lib/security-middleware');
@@ -35,19 +52,33 @@ export async function GET(request: NextRequest) {
       params.push(subscriptionId);
     }
 
-    const [rows] = await connection.execute(`
+    const limitNum = Math.max(1, Math.min(100, limit));
+    const offsetNum = Math.max(0, offset);
+
+    const [rows] = await connection.execute(
+      `
       SELECT 
         p.*,
         u.telegram_id,
         u.telegram_username,
         u.telegram_first_name,
-        u.email
+        u.email,
+        pu.promocode_id,
+        pc.code as promocode_code,
+        pc.discount_type as promocode_discount_type,
+        pc.discount_percent as promocode_discount_percent,
+        pc.discount_amount as promocode_discount_amount,
+        pu.discount_amount as applied_discount_amount
       FROM payments p
-      LEFT JOIN users u ON p.user_id = u.id
+      LEFT JOIN users u ON p.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN promocode_usages pu ON p.subscription_id COLLATE utf8mb4_unicode_ci = pu.subscription_id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN promocodes pc ON pu.promocode_id COLLATE utf8mb4_unicode_ci = pc.id COLLATE utf8mb4_unicode_ci
       WHERE ${whereClause}
       ORDER BY p.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...params, limit, offset]);
+      LIMIT ${limitNum} OFFSET ${offsetNum}
+    `,
+      params
+    );
 
     const [countResult] = await connection.execute(`
       SELECT COUNT(*) as total FROM payments p WHERE ${whereClause}
@@ -76,7 +107,7 @@ export async function GET(request: NextRequest) {
       status: row.status,
       paymentMethod: row.payment_method,
       externalId: row.external_id,
-      providerData: row.provider_data ? JSON.parse(row.provider_data) : null,
+      providerData: parseProviderData(row.provider_data),
       errorMessage: row.error_message,
       paidAt: row.paid_at,
       createdAt: row.created_at,
@@ -86,7 +117,14 @@ export async function GET(request: NextRequest) {
         telegramUsername: row.telegram_username,
         telegramFirstName: row.telegram_first_name,
         email: row.email
-      }
+      },
+      promocode: row.promocode_code ? {
+        code: row.promocode_code,
+        discountType: row.promocode_discount_type,
+        discountPercent: row.promocode_discount_percent,
+        discountAmount: row.promocode_discount_amount,
+        appliedDiscount: parseFloat(row.applied_discount_amount) || 0
+      } : null
     }));
 
     const statsRow = (stats as any[])[0];

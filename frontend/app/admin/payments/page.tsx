@@ -10,7 +10,8 @@ import {
   XCircle,
   Clock,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  Ticket
 } from 'lucide-react';
 
 interface Payment {
@@ -30,6 +31,13 @@ interface Payment {
     telegramFirstName?: string;
     email?: string;
   };
+  promocode?: {
+    code: string;
+    discountType: 'percent' | 'fixed';
+    discountPercent: number | null;
+    discountAmount: number | null;
+    appliedDiscount: number;
+  } | null;
 }
 
 const statusConfig = {
@@ -89,7 +97,8 @@ export default function PaymentsPage() {
       payment.user?.telegramFirstName?.toLowerCase().includes(query) ||
       payment.user?.email?.toLowerCase().includes(query) ||
       payment.externalId?.includes(query) ||
-      payment.id.includes(query)
+      payment.id.includes(query) ||
+      payment.promocode?.code?.toLowerCase().includes(query)
     );
   });
 
@@ -198,6 +207,7 @@ export default function PaymentsPage() {
                 <tr className="border-b border-white/10">
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Пользователь</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Сумма</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Промокод</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Метод</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Статус</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Дата</th>
@@ -207,13 +217,13 @@ export default function PaymentsPage() {
               <tbody className="divide-y divide-white/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
                       Загрузка...
                     </td>
                   </tr>
                 ) : filteredPayments.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
                       Платежи не найдены
                     </td>
                   </tr>
@@ -234,6 +244,37 @@ export default function PaymentsPage() {
                               {payment.user?.email || `TG: ${payment.user?.telegramId}`}
                             </p>
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div>
+                            <p className="text-white font-medium">
+                              {formatAmount(payment.amount)} {payment.currency}
+                            </p>
+                            {payment.promocode && (
+                              <p className="text-xs text-green-400 mt-1">
+                                С промокодом
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {payment.promocode ? (
+                            <div className="flex items-center gap-2">
+                              <Ticket className="h-4 w-4 text-orange-400" />
+                              <div>
+                                <p className="text-white font-medium text-sm">
+                                  {payment.promocode.code}
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  {payment.promocode.discountType === 'percent' 
+                                    ? `-${payment.promocode.discountPercent}%`
+                                    : `-${payment.promocode.appliedDiscount.toFixed(2)} USDT`}
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500 text-sm">—</span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className="text-white font-medium">

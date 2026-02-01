@@ -15,7 +15,9 @@ import {
   Plus,
   X,
   Wallet,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { Tariff, TariffPrice } from '@/types/tariff';
 
@@ -45,6 +47,7 @@ interface NewUserForm {
   email: string;
   // Subscription fields
   createSubscription: boolean;
+  subscriptionIsFree: boolean;
   tariffId: string;
   tariffPriceId: string;
   subscriptionAmount: number;
@@ -67,6 +70,9 @@ export default function UsersPage() {
   
   // Модальное окно добавления пользователя
   const [showAddModal, setShowAddModal] = useState(false);
+  // Удаление: пользователь для подтверждения
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
   
   // Default end date: 1 month from now
   const getDefaultEndDate = (months: number = 1) => {
@@ -83,6 +89,7 @@ export default function UsersPage() {
     discordUsername: '',
     email: '',
     createSubscription: true,
+    subscriptionIsFree: false,
     tariffId: '',
     tariffPriceId: '',
     subscriptionAmount: 0,
@@ -102,7 +109,7 @@ export default function UsersPage() {
 
   const loadTariffs = async () => {
     try {
-      const response = await fetch('/api/tariffs?activeOnly=true&includeCustom=true');
+      const response = await fetch('/api/tariffs?includeArchived=true&includeCustom=true');
       if (response.ok) {
         const data = await response.json();
         setTariffs(data.tariffs || []);
@@ -139,6 +146,25 @@ export default function UsersPage() {
       setUsers([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/users/${userToDelete.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Не удалось удалить пользователя');
+      }
+      setError(null);
+      setUserToDelete(null);
+      await loadUsers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка удаления');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -185,8 +211,8 @@ export default function UsersPage() {
       return;
     }
 
-    if (newUser.createSubscription && !newUser.tariffId) {
-      setError('Выберите тариф');
+    if (newUser.createSubscription && !newUser.subscriptionIsFree && !newUser.tariffId) {
+      setError('Выберите тариф или отметьте «Бесплатная подписка»');
       return;
     }
 
@@ -207,9 +233,10 @@ export default function UsersPage() {
           email: newUser.email || null,
           // Subscription data
           createSubscription: newUser.createSubscription,
-          tariffId: newUser.tariffId,
-          tariffPriceId: newUser.tariffPriceId,
-          subscriptionAmount: newUser.subscriptionAmount,
+          subscriptionIsFree: newUser.subscriptionIsFree,
+          tariffId: newUser.subscriptionIsFree ? null : newUser.tariffId,
+          tariffPriceId: newUser.subscriptionIsFree ? null : newUser.tariffPriceId,
+          subscriptionAmount: newUser.subscriptionIsFree ? 0 : newUser.subscriptionAmount,
           subscriptionEndDate: newUser.subscriptionEndDate
         })
       });
@@ -241,6 +268,7 @@ export default function UsersPage() {
       discordUsername: '', 
       email: '',
       createSubscription: true,
+      subscriptionIsFree: false,
       tariffId: '',
       tariffPriceId: '',
       subscriptionAmount: 0,
@@ -456,13 +484,20 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => router.push(`/admin/users/${user.id}`)}
                             className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
                             title="Подробнее"
                           >
                             <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setUserToDelete(user)}
+                            className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                            title="Удалить"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
@@ -501,6 +536,65 @@ export default function UsersPage() {
             </div>
           )}
         </div>
+
+        {/* Delete confirmation modal */}
+        {userToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => !deleting && (setUserToDelete(null), setError(null))}
+            />
+            <div className="relative bg-[#1a1a2e] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center">
+                  <AlertTriangle className="h-6 w-6 text-red-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-white">Удалить пользователя?</h2>
+                  <p className="text-sm text-gray-400 mt-0.5">
+                    {userToDelete.telegramUsername
+                      ? `@${userToDelete.telegramUsername}`
+                      : userToDelete.telegramFirstName || userToDelete.email || userToDelete.id}
+                  </p>
+                </div>
+              </div>
+              <p className="text-gray-400 text-sm mb-6">
+                Будут удалены профиль пользователя, его подписки и связь с платежами. Это действие нельзя отменить.
+              </p>
+              {error && (
+                <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
+                  {error}
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setUserToDelete(null); setError(null); }}
+                  disabled={deleting}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-50 transition-all"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="px-4 py-2.5 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50 transition-all flex items-center gap-2"
+                >
+                  {deleting ? (
+                    <>
+                      <span className="inline-block w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                      Удаление...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Удалить
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add User Modal */}
         {showAddModal && (
@@ -614,6 +708,19 @@ export default function UsersPage() {
 
                 {newUser.createSubscription && (
                   <div className="space-y-4 p-4 rounded-xl bg-white/5">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUser.subscriptionIsFree}
+                        onChange={(e) => setNewUser({ ...newUser, subscriptionIsFree: e.target.checked, tariffId: e.target.checked ? '' : newUser.tariffId, tariffPriceId: e.target.checked ? '' : newUser.tariffPriceId, subscriptionAmount: e.target.checked ? 0 : newUser.subscriptionAmount })}
+                        className="w-4 h-4 rounded bg-white/10 border-white/20 text-amber-500 focus:ring-amber-500 focus:ring-offset-0"
+                      />
+                      <span className="text-white font-medium">Бесплатная подписка</span>
+                      <span className="text-xs text-gray-500">(тариф выбирать не нужно)</span>
+                    </label>
+
+                    {!newUser.subscriptionIsFree && (
+                      <>
                     {/* Выбор тарифа */}
                     <div>
                       <label className="block text-sm text-gray-400 mb-2">
@@ -628,7 +735,9 @@ export default function UsersPage() {
                         <option value="">Выберите тариф...</option>
                         {tariffs.map(tariff => (
                           <option key={tariff.id} value={tariff.id}>
-                            {tariff.name} {tariff.isCustom ? '(кастомный)' : ''}
+                            {tariff.name}
+                            {!tariff.isActive ? ' (неактив.)' : ''}
+                            {tariff.isCustom ? ' (кастомный)' : ''}
                           </option>
                         ))}
                       </select>
@@ -716,6 +825,33 @@ export default function UsersPage() {
                         </button>
                       ))}
                     </div>
+                      </>
+                    )}
+
+                    {/* Дата окончания — для бесплатной подписки (для платной уже в блоке выше) */}
+                    {newUser.subscriptionIsFree && (
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-2">Дата окончания подписки</label>
+                        <div className="flex gap-2 flex-wrap items-center">
+                          <input
+                            type="date"
+                            value={newUser.subscriptionEndDate}
+                            onChange={(e) => setNewUser({ ...newUser, subscriptionEndDate: e.target.value })}
+                            className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
+                          />
+                          {[1, 3, 6, 12].map(months => (
+                            <button
+                              key={months}
+                              type="button"
+                              onClick={() => setNewUser({ ...newUser, subscriptionEndDate: getDefaultEndDate(months) })}
+                              className="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all"
+                            >
+                              +{months} {months === 1 ? 'мес' : months === 12 ? 'год' : 'мес'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

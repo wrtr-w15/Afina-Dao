@@ -100,7 +100,7 @@ export async function GET(
           locale: t.locale,
           name: t.name,
           description: t.description,
-          content: t.content
+          content: t.content ?? null
         })),
         blocks: blocksWithTranslations, // Legacy - kept for backward compatibility
         createdAt: project.created_at,
@@ -125,114 +125,141 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Проверка аутентификации администратора
-  const { checkAdminAuth } = await import('@/lib/security-middleware');
-  const authResult = await checkAdminAuth(request);
-  if (authResult) return authResult;
+  let connection: Awaited<ReturnType<typeof getConnection>> | null = null;
+  try {
+    // Проверка аутентификации администратора
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth(request);
+    if (authResult) return authResult;
 
-  // Rate limiting (более строгий для изменяющих операций)
-  const rateLimitResult = applyRateLimit(request, 30, 60000); // 30 запросов в минуту
-  if (rateLimitResult) return rateLimitResult;
-  
-  const { id } = await params;
-  
-  // Валидация UUID
-  const uuidValidation = validateUUIDParam(id, 'project ID');
-  if (uuidValidation) {
-    logSuspiciousActivity(request, 'Invalid project ID format in PUT', { id });
-    return uuidValidation;
-  }
-  
-  const data = await request.json();
-  
-  // Валидация входных данных
-  if (data.sidebarName) {
-    const nameValidation = validateProjectName(data.sidebarName);
-    if (!nameValidation.valid) {
-      return NextResponse.json({ error: nameValidation.error }, { status: 400 });
+    // Rate limiting (более строгий для изменяющих операций)
+    const rateLimitResult = applyRateLimit(request, 30, 60000); // 30 запросов в минуту
+    if (rateLimitResult) return rateLimitResult;
+
+    const { id } = await params;
+
+    // Валидация UUID
+    const uuidValidation = validateUUIDParam(id, 'project ID');
+    if (uuidValidation) {
+      logSuspiciousActivity(request, 'Invalid project ID format in PUT', { id });
+      return uuidValidation;
     }
-  }
-  
-  if (data.status) {
-    const statusValidation = validateProjectStatus(data.status);
-    if (!statusValidation.valid) {
-      logSuspiciousActivity(request, 'Invalid project status', { status: data.status });
-      return NextResponse.json({ error: statusValidation.error }, { status: 400 });
+
+    let data: any;
+    try {
+      data = await request.json();
+    } catch (parseErr) {
+      console.error('PUT projects parse body error:', parseErr);
+      return NextResponse.json(
+        { error: 'Invalid JSON body or body too large' },
+        { status: 400 }
+      );
     }
-  }
-  
-  if (data.image) {
-    const imageValidation = validateImageURL(data.image);
-    if (!imageValidation.valid) {
-      return NextResponse.json({ error: imageValidation.error }, { status: 400 });
+    if (!data || typeof data !== 'object') {
+      return NextResponse.json({ error: 'Request body must be a JSON object' }, { status: 400 });
     }
-  }
-  
-  // Валидация переводов
-  if (data.translations && Array.isArray(data.translations)) {
-    for (const translation of data.translations) {
-      const translationValidation = validateProjectTranslation(translation);
-      if (!translationValidation.valid) {
-        return NextResponse.json({ error: `Translation error: ${translationValidation.error}` }, { status: 400 });
+
+    // Валидация входных данных
+    if (data.sidebarName) {
+      const nameValidation = validateProjectName(data.sidebarName);
+      if (!nameValidation.valid) {
+        return NextResponse.json({ error: nameValidation.error }, { status: 400 });
       }
     }
-  }
-  
-  const connection = await getConnection();
-  try {
-    // Обновляем основную информацию проекта
-    await connection.execute(`
-      UPDATE projects 
-      SET sidebar_name = ?, status = ?, category = ?, 
-          website = ?, telegram_post = ?, image = ?, content = ?,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [
-      data.sidebarName,
-      data.status,
-      data.category,
-      data.website || null,
-      data.telegramPost || null,
-      data.image || null,
-      data.content || null,
-      id
-    ]);
-    
-    // Сохраняем переводы
+
+    if (data.status) {
+      const statusValidation = validateProjectStatus(data.status);
+      if (!statusValidation.valid) {
+        logSuspiciousActivity(request, 'Invalid project status', { status: data.status });
+        return NextResponse.json({ error: statusValidation.error }, { status: 400 });
+      }
+    }
+
+    if (data.image != null && data.image !== '') {
+      const imageValidation = validateImageURL(String(data.image));
+      if (!imageValidation.valid) {
+        return NextResponse.json({ error: imageValidation.error }, { status: 400 });
+      }
+    }
+
+    // Валидация переводов
     if (data.translations && Array.isArray(data.translations)) {
       for (const translation of data.translations) {
-        await connection.execute(`
-          INSERT INTO project_translations (id, project_id, locale, name, description, content)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE 
-            name = VALUES(name),
-            description = VALUES(description),
-            content = VALUES(content),
-            updated_at = CURRENT_TIMESTAMP
-        `, [
-          crypto.randomUUID(),
-          id,
-          translation.locale,
-          translation.name,
-          translation.description,
-          translation.content || null
-        ]);
+        const translationValidation = validateProjectTranslation(translation);
+        if (!translationValidation.valid) {
+          return NextResponse.json({ error: `Translation error: ${translationValidation.error}` }, { status: 400 });
+        }
       }
     }
 
-    // Блоки теперь обновляются через отдельное API /api/projects/[id]/blocks/translations
-    // Здесь обновляем только основную информацию проекта
+    connection = await getConnection();
 
-    // Сигнализируем об обновлении данных (для очистки кэша на клиенте)
-    return NextResponse.json({ 
+    // Убеждаемся, что в project_translations есть колонка content
+    try {
+      await connection.execute(`
+        ALTER TABLE project_translations ADD COLUMN content TEXT NULL
+      `);
+    } catch (e: any) {
+      if (e.errno !== 1060) throw e; // 1060 = колонка уже существует
+    }
+
+    // Обновляем основную информацию проекта
+    await connection.execute(
+      `UPDATE projects 
+       SET sidebar_name = ?, status = ?, category = ?, 
+           website = ?, telegram_post = ?, image = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        data.sidebarName ?? null,
+        data.status ?? null,
+        data.category ?? null,
+        data.website || null,
+        data.telegramPost || null,
+        data.image != null && data.image !== '' ? String(data.image) : null,
+        id,
+      ]
+    );
+
+    // Сохраняем переводы (включая content)
+    if (data.translations && Array.isArray(data.translations)) {
+      for (const translation of data.translations) {
+        await connection.execute(
+          `INSERT INTO project_translations (id, project_id, locale, name, description, content)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+             name = VALUES(name),
+             description = VALUES(description),
+             content = VALUES(content),
+             updated_at = CURRENT_TIMESTAMP`,
+          [
+            crypto.randomUUID(),
+            id,
+            translation.locale,
+            translation.name ?? '',
+            translation.description ?? null,
+            translation.content ?? null,
+          ]
+        );
+      }
+    }
+
+    return NextResponse.json({
       message: 'Project updated successfully',
-      cacheInvalidated: true 
+      cacheInvalidated: true,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating project:', error);
-    return NextResponse.json({ error: 'Failed to update project' }, { status: 500 });
+    const message = error?.message || String(error);
+    const errorText = message.includes('ECONNREFUSED') || message.includes('ER_')
+      ? 'Database error. Check that the projects table has columns: sidebar_name, status, category, website, telegram_post, image.'
+      : 'Failed to update project';
+    return NextResponse.json(
+      { error: errorText, details: process.env.NODE_ENV === 'development' ? message : undefined },
+      { status: 500 }
+    );
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 }
 

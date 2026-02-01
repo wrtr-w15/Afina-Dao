@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { grantRole } from '@/lib/discord-bot';
 import { getConnection } from '@/lib/database';
 import crypto from 'crypto';
 
@@ -17,7 +16,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'discordId is required' }, { status: 400 });
     }
 
-    // Выдаём роль
+    // Динамический импорт discord-bot (избегаем zlib-sync на этапе сборки)
+    const { grantRole } = await import('@/lib/discord-bot');
     const result = await grantRole(discordId);
 
     if (!result.success) {

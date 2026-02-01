@@ -4,7 +4,11 @@ import { getConnection } from '@/lib/database';
 import { revokeRole, sendDM } from '@/lib/discord-bot';
 import { revokeAccess } from '@/lib/notion';
 import { sendMessage } from '@/lib/telegram-bot';
+import { getBotText } from '@/lib/telegram-bot/get-text';
 import crypto from 'crypto';
+
+const DEFAULT_EXPIRING_3_DAYS =
+  '⚠️ <b>Ваша подписка скоро истечёт!</b>\n\n📅 Дата окончания: {{endDate}}\n⏳ Осталось: {{daysLeft}} дн.\n\nПродлите подписку, чтобы не потерять доступ.';
 
 let intervalId: NodeJS.Timeout | null = null;
 let isRunning = false;
@@ -165,64 +169,71 @@ async function processExpiredSubscription(connection: any, subscription: any): P
   );
 }
 
-// Проверка подписок, которые скоро истекут (за 3 дня и за 1 день)
+// Проверка подписок, которые скоро истекут — по блокам уведомлений из БД с условиями
 async function checkExpiringSubscriptions(): Promise<void> {
   const connection = await getConnection();
-  
+
   try {
-    // Подписки, истекающие через 3 дня
-    const [expiringIn3Days] = await connection.execute(`
-      SELECT 
-        s.*,
-        u.telegram_id
-      FROM subscriptions s
-      LEFT JOIN users u ON s.user_id = u.id
-      WHERE s.status = 'active' 
-        AND s.end_date > NOW()
-        AND s.end_date <= DATE_ADD(NOW(), INTERVAL 3 DAY)
-        AND s.end_date > DATE_ADD(NOW(), INTERVAL 2 DAY)
-    `);
-
-    for (const subscription of expiringIn3Days as any[]) {
-      if (subscription.telegram_id) {
+    const [rows] = await connection.execute(
+      `SELECT \`key\`, value, notification_condition FROM telegram_bot_texts 
+       WHERE section = 'notifications' AND notification_condition IS NOT NULL`
+    );
+    const notificationBlocks = (rows as any[]).map((r: any) => {
+      let nc: { type?: string; days?: number } | null = null;
+      if (r.notification_condition) {
         try {
-          const endDate = new Date(subscription.end_date).toLocaleDateString('ru-RU');
-          await sendMessage(
-            subscription.telegram_id,
-            `⚠️ <b>Ваша подписка скоро истечёт!</b>\n\n📅 Дата окончания: ${endDate}\n⏳ Осталось: 3 дня\n\nПродлите подписку, чтобы не потерять доступ.`
-          );
-        } catch (error) {
-          console.error(`Failed to send expiring notification to ${subscription.telegram_id}:`, error);
+          nc = typeof r.notification_condition === 'string' ? JSON.parse(r.notification_condition) : r.notification_condition;
+        } catch {}
+      }
+      return { key: r.key, value: r.value, condition: nc };
+    }).filter((b: { condition: { type?: string; days?: number } | null }) => b.condition?.type === 'days_before_expiry' && typeof b.condition.days === 'number' && b.condition.days >= 1);
+
+    let totalSent = 0;
+    for (const block of notificationBlocks) {
+      const days = block.condition!.days!;
+      const logAction = `${block.key}_sent`;
+      const [subs] = await connection.execute(
+        `SELECT s.*, u.telegram_id
+         FROM subscriptions s
+         LEFT JOIN users u ON s.user_id = u.id
+         WHERE s.status = 'active'
+           AND s.end_date > NOW()
+           AND s.end_date > DATE_ADD(NOW(), INTERVAL ? DAY)
+           AND s.end_date <= DATE_ADD(NOW(), INTERVAL ? DAY)
+           AND NOT EXISTS (
+             SELECT 1 FROM subscription_logs sl
+             WHERE sl.subscription_id = s.id AND sl.action = ?
+           )`,
+        [days - 1, days, logAction]
+      );
+
+      for (const subscription of subs as any[]) {
+        if (subscription.telegram_id) {
+          try {
+            const endDate = new Date(subscription.end_date).toLocaleDateString('ru-RU');
+            const daysLeftStr = String(days);
+            let text = await getBotText(block.key, { endDate, daysLeft: daysLeftStr });
+            if (!text || !text.trim()) {
+              text = (block.value || DEFAULT_EXPIRING_3_DAYS)
+                .replace(/\{\{endDate\}\}/g, endDate)
+                .replace(/\{\{daysLeft\}\}/g, daysLeftStr);
+            }
+            await sendMessage(subscription.telegram_id, text);
+            await connection.execute(
+              `INSERT INTO subscription_logs (id, user_id, subscription_id, action, details)
+               VALUES (?, ?, ?, ?, ?)`,
+              [crypto.randomUUID(), subscription.user_id, subscription.id, logAction, JSON.stringify({ sentAt: new Date().toISOString() })]
+            );
+            totalSent += 1;
+          } catch (error) {
+            console.error(`Failed to send notification ${block.key} to ${subscription.telegram_id}:`, error);
+          }
         }
       }
     }
-
-    // Подписки, истекающие завтра
-    const [expiringTomorrow] = await connection.execute(`
-      SELECT 
-        s.*,
-        u.telegram_id
-      FROM subscriptions s
-      LEFT JOIN users u ON s.user_id = u.id
-      WHERE s.status = 'active' 
-        AND s.end_date > NOW()
-        AND s.end_date <= DATE_ADD(NOW(), INTERVAL 1 DAY)
-    `);
-
-    for (const subscription of expiringTomorrow as any[]) {
-      if (subscription.telegram_id) {
-        try {
-          await sendMessage(
-            subscription.telegram_id,
-            `🔴 <b>Внимание! Ваша подписка истекает завтра!</b>\n\nЕсли вы не продлите подписку, доступ будет отозван.\n\nИспользуйте /start для продления.`
-          );
-        } catch (error) {
-          console.error(`Failed to send urgent notification to ${subscription.telegram_id}:`, error);
-        }
-      }
+    if (totalSent > 0 || notificationBlocks.length > 0) {
+      console.log(`Processed ${notificationBlocks.length} notification block(s), sent ${totalSent} message(s)`);
     }
-
-    console.log(`Sent ${(expiringIn3Days as any[]).length} 3-day warnings and ${(expiringTomorrow as any[]).length} 1-day warnings`);
   } finally {
     connection.release();
   }

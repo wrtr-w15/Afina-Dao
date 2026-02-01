@@ -111,6 +111,33 @@
     "lightTheme": "Light theme",
     "darkTheme": "Dark theme"
   },
+  "notFound": {
+    "description": "Page not found. It may have been moved or no longer exists.",
+    "backToHome": "Back to home"
+  },
+  "contacts": {
+    "title": "Contacts",
+    "description": "Get in touch with Afina DAO team",
+    "telegramChannel": "Telegram channel",
+    "telegramChannelDesc": "Community news and announcements",
+    "discordServer": "Discord server",
+    "discordServerDesc": "Chat and support on Discord",
+    "support": "Support",
+    "supportDesc": "Write to us on Telegram — we'll answer any questions",
+    "supportTg": "Message on Telegram",
+    "goToChannel": "Go to channel",
+    "goToServer": "Go to server",
+    "noLinksYet": "Links are not configured yet. Admin can add them in Contact links."
+  },
+  "project": {
+    "created": "Created",
+    "description": "Description",
+    "projectLinks": "Project links",
+    "notFound": "Project not found",
+    "notFoundDesc": "The requested project does not exist or has been deleted",
+    "backToHome": "Back to home",
+    "loading": "Loading..."
+  },
   "search": {
     "placeholder": "Search",
     "noResults": "Nothing found",

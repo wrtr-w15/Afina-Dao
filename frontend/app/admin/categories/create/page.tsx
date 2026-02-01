@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { CreateCategoryData, CATEGORY_COLORS, CATEGORY_ICONS } from '../../../../types/category';
 import { createCategory } from '../../../../lib/categories';
+import { normalizeErrorMessage } from '../../../../lib/error-utils';
 
 export default function CreateCategoryPage() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function CreateCategoryPage() {
       }, 1500);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Произошла ошибка');
+      setError(normalizeErrorMessage(err) || 'Произошла ошибка');
     } finally {
       setIsLoading(false);
     }

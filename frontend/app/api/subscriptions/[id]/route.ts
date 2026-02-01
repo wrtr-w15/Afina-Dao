@@ -4,6 +4,20 @@ import { grantRole, revokeRole } from '@/lib/discord-bot';
 import { grantAccess, revokeAccess } from '@/lib/notion';
 import crypto from 'crypto';
 
+/** Приводит ISO-дату или Date к формату MySQL DATETIME (YYYY-MM-DD HH:MM:SS) */
+function toMySQLDateTime(value: string | Date | null | undefined): string | null {
+  if (value == null) return null;
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}:${s}`;
+}
+
 // GET /api/subscriptions/[id] - детали подписки
 export async function GET(
   request: NextRequest,
@@ -29,7 +43,7 @@ export async function GET(
         u.discord_username,
         u.email
       FROM subscriptions s
-      LEFT JOIN users u ON s.user_id = u.id
+      LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
       WHERE s.id = ?
     `, [id]);
 
@@ -59,6 +73,7 @@ export async function GET(
       status: row.status,
       startDate: row.start_date,
       endDate: row.end_date,
+      isFree: Boolean(row.is_free),
       discordRoleGranted: Boolean(row.discord_role_granted),
       notionAccessGranted: Boolean(row.notion_access_granted),
       autoRenew: Boolean(row.auto_renew),
@@ -114,11 +129,24 @@ export async function PUT(
   const connection = await getConnection();
 
   try {
-    // Проверяем существование подписки
+    // Колонка is_free может отсутствовать в старых БД
+    try {
+      const [col] = await connection.execute(`
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions' AND COLUMN_NAME = 'is_free'
+      `);
+      if ((col as any[]).length === 0) {
+        await connection.execute(`ALTER TABLE subscriptions ADD COLUMN is_free TINYINT(1) DEFAULT 0`);
+      }
+    } catch (e) {
+      // Игнорируем
+    }
+
+    // Проверяем существование подписки (COLLATE устраняет смешение коллаций utf8mb4_unicode_ci / utf8mb4_0900_ai_ci)
     const [existing] = await connection.execute(`
       SELECT s.*, u.discord_id, u.email 
       FROM subscriptions s
-      LEFT JOIN users u ON s.user_id = u.id
+      LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
       WHERE s.id = ?
     `, [id]);
 
@@ -130,7 +158,16 @@ export async function PUT(
     const oldStatus = subscription.status;
     const newStatus = data.status || oldStatus;
 
-    // Обновляем подписку
+    // Обновляем подписку (mysql2 не принимает undefined — передаём null для «не менять»; даты — в формате MySQL)
+    const statusVal = data.status !== undefined ? data.status : null;
+    const startDateVal = data.startDate !== undefined ? toMySQLDateTime(data.startDate) : null;
+    const endDateVal = data.endDate !== undefined ? toMySQLDateTime(data.endDate) : null;
+    const discordRoleVal = data.discordRoleGranted !== undefined ? data.discordRoleGranted : null;
+    const notionAccessVal = data.notionAccessGranted !== undefined ? data.notionAccessGranted : null;
+    const autoRenewVal = data.autoRenew !== undefined ? data.autoRenew : null;
+    const notesVal = data.notes !== undefined ? data.notes : null;
+    const isFreeVal = data.isFree !== undefined ? data.isFree : null;
+
     await connection.execute(`
       UPDATE subscriptions SET
         status = COALESCE(?, status),
@@ -140,16 +177,18 @@ export async function PUT(
         notion_access_granted = COALESCE(?, notion_access_granted),
         auto_renew = COALESCE(?, auto_renew),
         notes = COALESCE(?, notes),
+        is_free = COALESCE(?, is_free),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
-      data.status,
-      data.startDate,
-      data.endDate,
-      data.discordRoleGranted,
-      data.notionAccessGranted,
-      data.autoRenew,
-      data.notes,
+      statusVal,
+      startDateVal,
+      endDateVal,
+      discordRoleVal,
+      notionAccessVal,
+      autoRenewVal,
+      notesVal,
+      isFreeVal !== null ? (isFreeVal ? 1 : 0) : null,
       id
     ]);
 

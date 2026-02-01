@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { MessageCircle, Save, Loader2, CheckCircle, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { MessageCircle, Save, Loader2, CheckCircle, AlertCircle, ChevronDown, ChevronRight, Plus, Trash2, X, HelpCircle, Download } from 'lucide-react';
+
+export type TelegramButton = { text: string; callback_data?: string; url?: string };
+export type TelegramButtons = TelegramButton[][]; // массив рядов, ряд = массив кнопок
+
+export type NotificationCondition = { type: 'days_before_expiry'; days: number } | null;
 
 interface TelegramText {
   id: string;
@@ -11,22 +16,60 @@ interface TelegramText {
   value: string;
   description: string;
   sortOrder: number;
+  buttons?: TelegramButtons;
+  notificationCondition?: NotificationCondition;
 }
 
 const SECTION_LABELS: Record<string, string> = {
   start: 'Старт (/start)',
   buy: 'Покупка подписки',
   account: 'Личный кабинет',
+  notifications: 'Уведомления',
   common: 'Общие сообщения'
 };
+
+const SECTION_ORDER = ['start', 'buy', 'account', 'notifications', 'common'];
+
+const TELEGRAM_VARIABLES: { name: string; desc: string }[] = [
+  { name: '{{subscriptionInfo}}', desc: 'Приветствие: строка про подписку до даты (если есть)' },
+  { name: '{{tariffName}}', desc: 'Название тарифа (экран выбора тарифа)' },
+  { name: '{{planName}}', desc: 'Название выбранного плана (подтверждение заказа)' },
+  { name: '{{period}}', desc: 'Период подписки в месяцах' },
+  { name: '{{priceUsdt}}', desc: 'Сумма в USDT' },
+  { name: '{{discordLine}}', desc: 'Строка про Discord в подтверждении заказа' },
+  { name: '{{emailLine}}', desc: 'Строка про Email в подтверждении заказа' },
+  { name: '{{paymentInfo}}', desc: 'Текст про оплату (ожидание оплаты)' },
+  { name: '{{paymentUrl}}', desc: 'URL страницы оплаты' },
+  { name: '{{discordOAuthUrl}}', desc: 'URL для авторизации Discord' },
+  { name: '{{discordInviteUrl}}', desc: 'URL приглашения в Discord сервер' },
+  { name: '{{endDate}}', desc: 'Дата окончания подписки (формат по локали)' },
+  { name: '{{daysLeft}}', desc: 'Дней до конца подписки' },
+  { name: '{{subscriptionStatus}}', desc: 'Статус подписки в личном кабинете' },
+  { name: '{{discordStatus}}', desc: 'Статус Discord в личном кабинете' },
+  { name: '{{emailStatus}}', desc: 'Статус Email в личном кабинете' },
+  { name: '{{paymentList}}', desc: 'Список платежей в истории (форматированный текст)' },
+  { name: '{{paginationInfo}}', desc: 'Информация о пагинации истории платежей' },
+];
 
 export default function AdminTelegramPage() {
   const [texts, setTexts] = useState<TelegramText[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({});
+  const [editedButtons, setEditedButtons] = useState<Record<string, TelegramButtons>>({});
+  const [editedConditions, setEditedConditions] = useState<Record<string, NotificationCondition>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [showVariablesHint, setShowVariablesHint] = useState(false);
+  const [showAddBlock, setShowAddBlock] = useState(false);
+  const [newBlock, setNewBlock] = useState({
+    key: '',
+    section: 'common' as string,
+    value: '',
+    description: '',
+    notificationCondition: null as NotificationCondition
+  });
+  const [addingBlock, setAddingBlock] = useState(false);
 
   useEffect(() => {
     loadTexts();
@@ -40,8 +83,18 @@ export default function AdminTelegramPage() {
       const data = await res.json();
       setTexts(data.texts || []);
       const initial: Record<string, string> = {};
-      (data.texts || []).forEach((t: TelegramText) => { initial[t.key] = t.value; });
+      const initialButtons: Record<string, TelegramButtons> = {};
+      const initialConditions: Record<string, NotificationCondition> = {};
+      (data.texts || []).forEach((t: TelegramText) => {
+        initial[t.key] = t.value;
+        initialButtons[t.key] = Array.isArray(t.buttons) && t.buttons.length > 0 ? t.buttons : [];
+        if (t.section === 'notifications') {
+          initialConditions[t.key] = t.notificationCondition ?? null;
+        }
+      });
       setEdited(initial);
+      setEditedButtons(initialButtons);
+      setEditedConditions(initialConditions);
     } catch (e) {
       console.error(e);
       setMessage({ type: 'error', text: 'Не удалось загрузить тексты' });
@@ -58,7 +111,17 @@ export default function AdminTelegramPage() {
     setIsSaving(true);
     setMessage(null);
     try {
-      const updates = texts.map((t) => ({ key: t.key, value: edited[t.key] ?? t.value }));
+      const updates = texts.map((t) => {
+        const u: { key: string; value: string; buttons: TelegramButtons; notification_condition?: NotificationCondition } = {
+          key: t.key,
+          value: edited[t.key] ?? t.value,
+          buttons: editedButtons[t.key] ?? t.buttons ?? []
+        };
+        if (t.section === 'notifications') {
+          u.notification_condition = editedConditions[t.key] ?? t.notificationCondition ?? null;
+        }
+        return u;
+      });
       const res = await fetch('/api/admin/telegram-texts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -78,18 +141,97 @@ export default function AdminTelegramPage() {
     setCollapsedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
+  const getButtons = (key: string): TelegramButtons => editedButtons[key] ?? [];
+  const setButtons = (key: string, next: TelegramButtons) => {
+    setEditedButtons((prev) => ({ ...prev, [key]: next }));
+  };
+  const addRow = (key: string) => {
+    setButtons(key, [...getButtons(key), []]);
+  };
+  const removeRow = (key: string, rowIndex: number) => {
+    setButtons(key, getButtons(key).filter((_, i) => i !== rowIndex));
+  };
+  const addButton = (key: string, rowIndex: number) => {
+    const rows = [...getButtons(key)];
+    if (!rows[rowIndex]) rows[rowIndex] = [];
+    rows[rowIndex] = [...rows[rowIndex], { text: '', callback_data: '' }];
+    setButtons(key, rows);
+  };
+  const removeButton = (key: string, rowIndex: number, btnIndex: number) => {
+    const rows = getButtons(key).map((row, i) =>
+      i === rowIndex ? row.filter((_, j) => j !== btnIndex) : row
+    );
+    setButtons(key, rows.filter((row) => row.length > 0));
+  };
+  const updateButton = (key: string, rowIndex: number, btnIndex: number, field: 'text' | 'callback_data' | 'url', value: string) => {
+    const rows = getButtons(key).map((row, i) =>
+      i === rowIndex
+        ? row.map((btn, j) => (j === btnIndex ? { ...btn, [field]: value } : btn))
+        : row
+    );
+    setButtons(key, rows);
+  };
+
   const bySection = texts.reduce<Record<string, TelegramText[]>>((acc, t) => {
     if (!acc[t.section]) acc[t.section] = [];
     acc[t.section].push(t);
     return acc;
   }, {});
 
-  const sections = ['start', 'buy', 'account', 'common'];
+  const sections = Array.from(new Set([...SECTION_ORDER, ...Object.keys(bySection)])).sort((a, b) => {
+    const ai = SECTION_ORDER.indexOf(a);
+    const bi = SECTION_ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  const setCondition = (key: string, cond: NotificationCondition) => {
+    setEditedConditions((prev) => ({ ...prev, [key]: cond }));
+  };
+
+  const handleAddBlock = async () => {
+    const key = newBlock.key.trim();
+    if (!key) {
+      setMessage({ type: 'error', text: 'Введите ключ блока' });
+      return;
+    }
+    setAddingBlock(true);
+    setMessage(null);
+    try {
+      const body: Record<string, unknown> = {
+        key,
+        section: newBlock.section,
+        value: newBlock.value,
+        description: newBlock.description,
+        sort_order: 100
+      };
+      if (newBlock.section === 'notifications' && newBlock.notificationCondition?.type === 'days_before_expiry' && newBlock.notificationCondition.days >= 1) {
+        body.notification_condition = newBlock.notificationCondition;
+      }
+      const res = await fetch('/api/admin/telegram-texts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Ошибка создания');
+      setMessage({ type: 'success', text: 'Блок добавлен' });
+      setShowAddBlock(false);
+      setNewBlock({ key: '', section: 'common', value: '', description: '', notificationCondition: null });
+      loadTexts();
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Не удалось добавить блок' });
+    } finally {
+      setAddingBlock(false);
+    }
+  };
 
   return (
     <AdminLayout title="Telegram — Тексты бота" description="Настройка текстов для каждого раздела бота">
       <div className="relative z-10 max-w-4xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
               <MessageCircle className="h-6 w-6 text-white" />
@@ -99,15 +241,185 @@ export default function AdminTelegramPage() {
               <p className="text-gray-400 text-sm">Редактируйте сообщения для каждого раздела бота</p>
             </div>
           </div>
-          <button
-            onClick={saveAll}
-            disabled={isLoading || isSaving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white font-medium hover:opacity-90 disabled:opacity-50 transition"
-          >
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {isSaving ? 'Сохранение...' : 'Сохранить всё'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirm('Инициализировать все тексты и кнопки бота? Существующие будут обновлены.')) return;
+                try {
+                  setIsSaving(true);
+                  const res = await fetch('/api/admin/telegram-texts/init', { method: 'POST' });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'Ошибка инициализации');
+                  setMessage({ type: 'success', text: data.message || 'Инициализация завершена' });
+                  loadTexts();
+                } catch (e) {
+                  setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Ошибка инициализации' });
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 disabled:opacity-50 transition"
+              title="Инициализировать все тексты и кнопки"
+            >
+              <Download className="h-4 w-4" />
+              Инициализировать
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowVariablesHint((v) => !v)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition"
+                title="Все переменные"
+              >
+                <HelpCircle className="h-4 w-4" />
+                Все переменные
+              </button>
+              {showVariablesHint && (
+                <>
+                  <div className="absolute right-0 top-full mt-1 z-50 w-[420px] max-h-[70vh] overflow-y-auto rounded-xl bg-[#1a1a2e] border border-white/10 shadow-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-semibold text-white">Доступные переменные</span>
+                      <button type="button" onClick={() => setShowVariablesHint(false)} className="p-1 rounded text-gray-400 hover:text-white">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">Вставляйте в текст в формате {'{{имя}}'}. Регистр важен.</p>
+                    <ul className="space-y-2">
+                      {TELEGRAM_VARIABLES.map((v) => (
+                        <li key={v.name} className="text-sm">
+                          <code className="text-sky-300 font-mono">{v.name}</code>
+                          <span className="text-gray-400 ml-2">— {v.desc}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowVariablesHint(false)} aria-hidden="true" />
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAddBlock(true)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить блок
+            </button>
+            <button
+              onClick={saveAll}
+              disabled={isLoading || isSaving}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white font-medium hover:opacity-90 disabled:opacity-50 transition"
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isSaving ? 'Сохранение...' : 'Сохранить всё'}
+            </button>
+          </div>
         </div>
+
+        {showAddBlock && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setShowAddBlock(false)} />
+            <div className="relative w-full max-w-lg rounded-2xl bg-[#1a1a2e] border border-white/10 p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-white">Добавить блок сообщения</h2>
+                <button type="button" onClick={() => setShowAddBlock(false)} className="p-1 rounded text-gray-400 hover:text-white">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Ключ (уникальный, латиница/подчёркивание)</label>
+                  <input
+                    type="text"
+                    value={newBlock.key}
+                    onChange={(e) => setNewBlock((b) => ({ ...b, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') }))}
+                    placeholder="my_custom_message"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Раздел</label>
+                  <select
+                    value={newBlock.section}
+                    onChange={(e) => setNewBlock((b) => ({ ...b, section: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white focus:border-sky-500/50 outline-none"
+                  >
+                    {SECTION_ORDER.map((s) => (
+                      <option key={s} value={s}>{SECTION_LABELS[s] || s}</option>
+                    ))}
+                  </select>
+                </div>
+                {newBlock.section === 'notifications' && (
+                  <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 space-y-2">
+                    <p className="text-sm font-medium text-amber-200">Условие отправки</p>
+                    <p className="text-xs text-gray-400">Отправить сообщение, когда до окончания подписки осталось указанное число дней.</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="text-sm text-gray-400">За</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={newBlock.notificationCondition?.type === 'days_before_expiry' ? newBlock.notificationCondition.days : ''}
+                        onChange={(e) => {
+                          const n = parseInt(e.target.value, 10);
+                          setNewBlock((b) => ({
+                            ...b,
+                            notificationCondition: Number.isFinite(n) && n >= 1
+                              ? { type: 'days_before_expiry', days: n }
+                              : null
+                          }));
+                        }}
+                        placeholder="3"
+                        className="w-20 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:border-sky-500/50 outline-none"
+                      />
+                      <span className="text-sm text-gray-400">дней до окончания подписки</span>
+                      {(newBlock.notificationCondition?.type === 'days_before_expiry') && (
+                        <button
+                          type="button"
+                          onClick={() => setNewBlock((b) => ({ ...b, notificationCondition: null }))}
+                          className="text-xs text-gray-500 hover:text-red-400"
+                        >
+                          Без условия
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Описание (подсказка для себя)</label>
+                  <input
+                    type="text"
+                    value={newBlock.description}
+                    onChange={(e) => setNewBlock((b) => ({ ...b, description: e.target.value }))}
+                    placeholder="Краткое описание блока"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Текст сообщения</label>
+                  <textarea
+                    value={newBlock.value}
+                    onChange={(e) => setNewBlock((b) => ({ ...b, value: e.target.value }))}
+                    rows={4}
+                    placeholder="Текст с переменными {{name}}..."
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 outline-none resize-y font-mono text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setShowAddBlock(false)} className="px-4 py-2 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10">
+                  Отмена
+                </button>
+                <button type="button" onClick={handleAddBlock} disabled={addingBlock} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 disabled:opacity-50">
+                  {addingBlock ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  {addingBlock ? 'Добавление...' : 'Добавить'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {message && (
           <div
@@ -150,20 +462,128 @@ export default function AdminTelegramPage() {
                   {!isCollapsed && (
                     <div className="px-5 pb-5 space-y-5">
                       {items.map((t) => (
-                        <div key={t.id} className="rounded-xl bg-black/20 p-4">
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            {t.key}
-                            {t.description && (
-                              <span className="ml-2 text-gray-500 font-normal">— {t.description}</span>
-                            )}
-                          </label>
-                          <textarea
-                            value={edited[t.key] ?? t.value}
-                            onChange={(e) => handleChange(t.key, e.target.value)}
-                            rows={Math.min(12, (edited[t.key] ?? t.value).split('\n').length + 2)}
-                            className="w-full px-4 py-3 rounded-lg bg-black/30 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 outline-none resize-y font-mono text-sm"
-                            placeholder="Текст сообщения (поддерживается HTML: &lt;b&gt;, &lt;code&gt;)"
-                          />
+                        <div key={t.id} className="rounded-xl bg-black/20 p-4 space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">
+                              {t.key}
+                              {t.description && (
+                                <span className="ml-2 text-gray-500 font-normal">— {t.description}</span>
+                              )}
+                            </label>
+                            {section === 'notifications' && (() => {
+                              const cond = editedConditions[t.key] ?? t.notificationCondition ?? null;
+                              const hasCondition = cond?.type === 'days_before_expiry';
+                              return (
+                                <div className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 flex items-center gap-3 flex-wrap">
+                                  <span className="text-sm text-amber-200">Условие:</span>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-400">За</label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={365}
+                                      value={hasCondition ? cond.days : ''}
+                                      onChange={(e) => {
+                                        const n = parseInt(e.target.value, 10);
+                                        setCondition(t.key, Number.isFinite(n) && n >= 1 ? { type: 'days_before_expiry', days: n } : null);
+                                      }}
+                                      placeholder="дней"
+                                      className="w-16 px-2 py-1.5 rounded bg-white/5 border border-white/10 text-white text-sm focus:border-sky-500/50 outline-none"
+                                    />
+                                    <span className="text-xs text-gray-400">дней до конца подписки</span>
+                                  </div>
+                                  {hasCondition && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCondition(t.key, null)}
+                                      className="text-xs text-gray-500 hover:text-red-400"
+                                    >
+                                      Убрать условие
+                                    </button>
+                                  )}
+                                  {!hasCondition && (
+                                    <span className="text-xs text-gray-500">Без условия — не отправляется по расписанию</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                            <textarea
+                              value={edited[t.key] ?? t.value}
+                              onChange={(e) => handleChange(t.key, e.target.value)}
+                              rows={Math.min(12, (edited[t.key] ?? t.value).split('\n').length + 2)}
+                              className="w-full px-4 py-3 rounded-lg bg-black/30 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 outline-none resize-y font-mono text-sm"
+                              placeholder="Текст сообщения (поддерживается HTML: &lt;b&gt;, &lt;code&gt;)"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-300 mb-2">Кнопки к сообщению</p>
+                            <p className="text-xs text-gray-500 mb-2">
+                              Каждый ряд — отдельная строка кнопок. У кнопки укажите текст и либо <strong>callback_data</strong> (без пробелов, до 64 байт), либо <strong>url</strong> (ссылка). Регистр callback_data не важен. После сохранения кэш бота сбрасывается.
+                            </p>
+                            <p className="text-xs text-gray-400 mb-2">
+                              Допустимые callback_data: <code className="text-gray-300">back_to_main</code>, <code className="text-gray-300">account</code>, <code className="text-gray-300">my_account</code>, <code className="text-gray-300">buy_subscription</code> (меню тарифов), <code className="text-gray-300">selectPlan_header</code> (то же — меню тарифов), <code className="text-gray-300">socials</code>, <code className="text-gray-300">help</code>, <code className="text-gray-300">check_status</code>, <code className="text-gray-300">back_to_account</code>, <code className="text-gray-300">refresh_account_info</code>, <code className="text-gray-300">change_email</code>, <code className="text-gray-300">enter_email</code>, <code className="text-gray-300">reconnect_discord</code>, <code className="text-gray-300">disconnect_discord</code>, <code className="text-gray-300">confirm_order</code>, <code className="text-gray-300">cancel_order</code>. Для выбора тарифа: <code className="text-gray-300">select_plan:ID</code> (ID тарифа).
+                            </p>
+                            {getButtons(t.key).map((row, rowIndex) => (
+                              <div key={rowIndex} className="mb-3 pl-2 border-l-2 border-white/10 space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {row.map((btn, btnIndex) => (
+                                    <div key={btnIndex} className="flex items-center gap-1 flex-wrap rounded-lg bg-black/30 p-2">
+                                      <input
+                                        type="text"
+                                        value={btn.text}
+                                        onChange={(e) => updateButton(t.key, rowIndex, btnIndex, 'text', e.target.value)}
+                                        placeholder="Текст кнопки"
+                                        className="w-28 px-2 py-1 rounded bg-white/5 border border-white/10 text-white text-sm"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={btn.callback_data ?? ''}
+                                        onChange={(e) => updateButton(t.key, rowIndex, btnIndex, 'callback_data', e.target.value)}
+                                        placeholder="callback_data"
+                                        className="w-32 px-2 py-1 rounded bg-white/5 border border-white/10 text-white text-sm font-mono"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={btn.url ?? ''}
+                                        onChange={(e) => updateButton(t.key, rowIndex, btnIndex, 'url', e.target.value)}
+                                        placeholder="или url"
+                                        className="w-36 px-2 py-1 rounded bg-white/5 border border-white/10 text-white text-sm"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removeButton(t.key, rowIndex, btnIndex)}
+                                        className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                                        title="Удалить кнопку"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => addButton(t.key, rowIndex)}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 text-sm"
+                                  >
+                                    <Plus className="h-4 w-4" /> Кнопка
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeRow(t.key, rowIndex)}
+                                  className="text-xs text-gray-500 hover:text-red-400"
+                                >
+                                  Удалить ряд
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => addRow(t.key)}
+                              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 text-sm"
+                            >
+                              <Plus className="h-4 w-4" /> Ряд кнопок
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -175,13 +595,7 @@ export default function AdminTelegramPage() {
         )}
 
         <p className="mt-6 text-gray-500 text-sm">
-          Подстановки в шаблонах: <code className="text-gray-400">{'{{subscriptionInfo}}'}</code>,{' '}
-          <code className="text-gray-400">{'{{tariffName}}'}</code>, <code className="text-gray-400">{'{{planName}}'}</code>,{' '}
-          <code className="text-gray-400">{'{{priceUsdt}}'}</code>, <code className="text-gray-400">{'{{discordLine}}'}</code>,{' '}
-          <code className="text-gray-400">{'{{emailLine}}'}</code>, <code className="text-gray-400">{'{{endDate}}'}</code>,{' '}
-          <code className="text-gray-400">{'{{daysLeft}}'}</code>, <code className="text-gray-400">{'{{subscriptionStatus}}'}</code>,{' '}
-          <code className="text-gray-400">{'{{discordStatus}}'}</code>, <code className="text-gray-400">{'{{emailStatus}}'}</code>,{' '}
-          <code className="text-gray-400">{'{{period}}'}</code>
+          Подстановки в шаблонах — см. кнопку <strong>«Все переменные»</strong> справа вверху.
         </p>
       </div>
     </AdminLayout>

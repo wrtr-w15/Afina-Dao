@@ -1,9 +1,25 @@
 'use client';
 
-import React from 'react';
-import PrismaticBurst from '@/components/PrismaticBurst';
+import React, { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import SplitText from '@/components/SplitText';
 import Header from '@/components/Header';
+
+const PrismaticBurst = dynamic(
+  () => import('@/components/PrismaticBurst'),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="absolute inset-0 w-full h-full opacity-40"
+        style={{
+          background: 'linear-gradient(135deg, #ff007a, #4d3dff, #ffffff)',
+          mixBlendMode: 'lighten',
+        }}
+      />
+    ),
+  }
+);
 
 export default function HomePage() {
   return (
@@ -13,18 +29,20 @@ export default function HomePage() {
       
       {/* PrismaticBurst Background - Full Screen */}
       <div className="fixed inset-0 z-0">
-        <PrismaticBurst
-          animationType="rotate3d"
-          intensity={2}
-          speed={0.5}
-          distort={0}
-          paused={false}
-          offset={{ x: 0, y: 0 }}
-          hoverDampness={0.25}
-          rayCount={0}
-          mixBlendMode="lighten"
-          colors={['#ff007a', '#4d3dff', '#ffffff']}
-        />
+        <Suspense fallback={null}>
+          <PrismaticBurst
+            animationType="rotate3d"
+            intensity={2}
+            speed={0.5}
+            distort={0}
+            paused={false}
+            offset={{ x: 0, y: 0 }}
+            hoverDampness={0.25}
+            rayCount={0}
+            mixBlendMode="lighten"
+            colors={['#ff007a', '#4d3dff', '#ffffff']}
+          />
+        </Suspense>
       </div>
        
       {/* Content Overlay */}

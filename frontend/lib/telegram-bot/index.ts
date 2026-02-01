@@ -4,14 +4,20 @@ import {
   handleStart,
   handleStatus,
   handleHelp,
+  handleHelpCallback,
   handleAccount,
   handleBackToMain,
   handleBuySubscription,
   handleSelectPlan,
   handleEnterEmail,
   handleEmailInput,
+  handleEnterPromocode,
+  handlePromocodeInput,
+  handlePaymentHistory,
+  handlePaymentHistoryPage,
   handleConfirmOrder,
   handleProcessPayment,
+  handleCheckPaymentStatus,
   handleCancel,
   handleSocials,
   handleAccountCallback,
@@ -23,9 +29,11 @@ import {
   handleConfirmDisconnectEmail,
   handleCheckStatus,
   handleBackToAccount,
+  handleRefreshAccountInfo,
   handleDiscordInput,
-  sendMessage
-} from './handlers';
+  sendMessage,
+  answerCallback
+} from '@/lib/telegram-bot/handlers';
 import { getConnection } from '@/lib/database';
 
 interface TelegramUpdate {
@@ -41,7 +49,16 @@ async function getUserState(telegramId: number): Promise<any> {
     const [rows] = await connection.execute('SELECT * FROM user_bot_states WHERE telegram_id = ?', [telegramId]);
     if ((rows as any[]).length > 0) {
       const row = (rows as any[])[0];
-      return { ...row, data: row.data ? JSON.parse(row.data) : {} };
+      // MySQL может вернуть JSON как объект или строку
+      let data = row.data;
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          data = {};
+        }
+      }
+      return { ...row, data: data || {} };
     }
     return null;
   } catch {
@@ -78,6 +95,8 @@ async function handleMessage(message: any): Promise<void> {
     case 'entering_email':
     case 'changing_email':
       return handleEmailInput(message);
+    case 'entering_promocode':
+      return handlePromocodeInput(message);
     case 'awaiting_discord_oauth':
       return handleDiscordInput(message);
     default:
@@ -85,45 +104,116 @@ async function handleMessage(message: any): Promise<void> {
   }
 }
 
-// Обработка callback
+// Обработка callback. callback_data сравниваем без учёта регистра для известных действий.
 async function handleCallbackQuery(callbackQuery: any): Promise<void> {
-  const data = callbackQuery.data || '';
+  const raw = callbackQuery.data || '';
+  const data = raw.trim();
 
-  switch (data) {
-    case 'back_to_main': return handleBackToMain(callbackQuery);
-    case 'buy_subscription':
-    case 'renew_subscription': return handleBuySubscription(callbackQuery);
-    case 'account':
-    case 'my_account': return handleAccountCallback(callbackQuery);
-    case 'socials': return handleSocials(callbackQuery);
-    case 'confirm_order': return handleConfirmOrder(callbackQuery);
-    case 'process_payment': return handleProcessPayment(callbackQuery);
-    case 'cancel':
-    case 'cancel_order': return handleCancel(callbackQuery);
-    case 'enter_email': return handleEnterEmail(callbackQuery);
-    case 'change_email': return handleChangeEmail(callbackQuery);
-    case 'reconnect_discord':
-    case 'connect_discord': return handleReconnectDiscord(callbackQuery);
-    case 'disconnect_discord': return handleDisconnectDiscord(callbackQuery);
-    case 'confirm_disconnect_discord': return handleConfirmDisconnectDiscord(callbackQuery);
-    case 'disconnect_email': return handleDisconnectEmail(callbackQuery);
-    case 'confirm_disconnect_email': return handleConfirmDisconnectEmail(callbackQuery);
-    case 'check_status': return handleCheckStatus(callbackQuery);
-    case 'back_to_account': return handleBackToAccount(callbackQuery);
-    case 'help':
-      return handleHelp({ chat: callbackQuery.message.chat, from: callbackQuery.from });
-    default:
-      if (data.startsWith('select_plan:')) return handleSelectPlan(callbackQuery);
+  if (!data) {
+    console.warn('Empty callback_data received');
+    try {
+      await answerCallback(callbackQuery.id, '⚠️ Пустой запрос');
+    } catch (e) {
+      console.error('Error answering empty callback:', e);
+    }
+    return;
+  }
+
+  const lower = data.toLowerCase();
+  
+  console.log(`[Telegram Bot] Processing callback: ${data} (lowercase: ${lower})`);
+  
+  try {
+    switch (lower) {
+      case 'back_to_main': 
+        return await handleBackToMain(callbackQuery);
+      case 'buy_subscription':
+      case 'renew_subscription':
+      case 'selectplan_header': // ключ текста «выбор тарифа» — открыть меню выбора тарифа
+        return await handleBuySubscription(callbackQuery);
+      case 'account':
+      case 'my_account': 
+        return await handleAccountCallback(callbackQuery);
+      case 'socials': 
+        return await handleSocials(callbackQuery);
+      case 'confirm_order': 
+        return await handleConfirmOrder(callbackQuery);
+      case 'process_payment': 
+        return await handleProcessPayment(callbackQuery);
+      case 'check_payment_status': 
+        return await handleCheckPaymentStatus(callbackQuery);
+      case 'cancel':
+      case 'cancel_order': 
+        return await handleCancel(callbackQuery);
+      case 'enter_email': 
+        return await handleEnterEmail(callbackQuery);
+      case 'change_email': 
+        return await handleChangeEmail(callbackQuery);
+      case 'reconnect_discord':
+      case 'connect_discord': 
+        return await handleReconnectDiscord(callbackQuery);
+      case 'disconnect_discord': 
+        return await handleDisconnectDiscord(callbackQuery);
+      case 'confirm_disconnect_discord': 
+        return await handleConfirmDisconnectDiscord(callbackQuery);
+      case 'disconnect_email': 
+        return await handleDisconnectEmail(callbackQuery);
+      case 'confirm_disconnect_email': 
+        return await handleConfirmDisconnectEmail(callbackQuery);
+      case 'check_status': 
+        return await handleCheckStatus(callbackQuery);
+      case 'back_to_account': 
+        return await handleBackToAccount(callbackQuery);
+      case 'refresh_account_info': 
+        return await handleRefreshAccountInfo(callbackQuery);
+      case 'enter_promocode': 
+        return await handleEnterPromocode(callbackQuery);
+      case 'payment_history': 
+        return await handlePaymentHistory(callbackQuery);
+      case 'help':
+        return await handleHelpCallback(callbackQuery);
+      default:
+        if (data.startsWith('select_plan:')) return await handleSelectPlan(callbackQuery);
+        if (data.startsWith('payment_page:')) return await handlePaymentHistoryPage(callbackQuery);
+        
+        // Если callback не обработан, отвечаем на него, чтобы убрать индикатор загрузки
+        console.warn(`Unhandled callback_data: ${data}`);
+        try {
+          await answerCallback(callbackQuery.id, '⚠️ Действие не найдено');
+        } catch (e) {
+          console.error('Error answering unhandled callback:', e);
+        }
+    }
+  } catch (error) {
+    console.error(`Error handling callback "${data}":`, error);
+    try {
+      await answerCallback(callbackQuery.id, '❌ Произошла ошибка');
+    } catch (e) {
+      console.error('Error answering callback after error:', e);
+    }
   }
 }
 
 // Главная функция обработки
 export async function processUpdate(update: TelegramUpdate): Promise<void> {
   try {
-    if (update.message) await handleMessage(update.message);
-    else if (update.callback_query) await handleCallbackQuery(update.callback_query);
+    if (update.message) {
+      console.log(`[Telegram Bot] Processing message from ${update.message.from?.id}: ${update.message.text?.substring(0, 50)}`);
+      await handleMessage(update.message);
+    } else if (update.callback_query) {
+      console.log(`[Telegram Bot] Processing callback_query from ${update.callback_query.from?.id}: ${update.callback_query.data}`);
+      await handleCallbackQuery(update.callback_query);
+    }
   } catch (error) {
-    console.error('Error processing Telegram update:', error);
+    console.error('[Telegram Bot] Error processing Telegram update:', error);
+    // Пытаемся ответить на callback, если это был callback_query
+    if (update.callback_query) {
+      try {
+        await answerCallback(update.callback_query.id, '❌ Произошла ошибка');
+      } catch (e) {
+        console.error('[Telegram Bot] Error answering callback after update error:', e);
+      }
+    }
   }
 }
 
@@ -148,4 +238,4 @@ export async function getMe(): Promise<any> {
   return response.json();
 }
 
-export { sendMessage } from './handlers';
+export { sendMessage };

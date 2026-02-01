@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations, useLocale } from 'next-intl';
 import Layout from '@/components/LayoutComponent';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -27,10 +28,19 @@ import DOMPurify from 'isomorphic-dompurify';
 export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations('project');
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeBlock, setActiveBlock] = useState<number>(0);
   const [isNavigationCollapsed, setIsNavigationCollapsed] = useState(false);
+
+  // Get translated project name
+  const getTranslatedName = () => {
+    if (!project) return '';
+    const translation = project.translations?.find((t: any) => t.locale === locale);
+    return translation?.name || project.name || '';
+  };
 
   useEffect(() => {
     const loadProject = async () => {
@@ -89,20 +99,20 @@ export default function ProjectPage() {
   if (!project) {
     return (
       <Layout 
-        title="Проект не найден - Afina DAO Wiki"
-        description="Проект не найден"
+        title={`${t('notFound')} - Afina DAO Wiki`}
+        description={t('notFound')}
         showSidebar={true}
       >
         <div className="text-center py-12">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-            Проект не найден
+            {t('notFound')}
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Запрашиваемый проект не существует или был удален
+            {t('notFoundDesc')}
           </p>
           <Button onClick={() => router.push('/')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Вернуться на главную
+            {t('backToHome')}
           </Button>
         </div>
       </Layout>
@@ -134,40 +144,52 @@ export default function ProjectPage() {
       .replace(/^### (.*$)/gim, '<h3 class="text-lg font-medium mb-2">$1</h3>')
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+      .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded text-blue-300 text-sm">$1</code>')
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-lg max-w-full my-4 w-full object-cover" />')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">$1</a>')
       .replace(/^- (.*$)/gim, '<li class="ml-4">$1</li>')
       .replace(/\n\n/g, '</p><p class="mb-4">')
       .replace(/\n/g, '<br>');
     
     // Санитизация HTML для предотвращения XSS
     return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'li', 'p', 'br'],
-      ALLOWED_ATTR: ['class'],
+      ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'li', 'p', 'br', 'code', 'a', 'img'],
+      ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt'],
       ALLOW_DATA_ATTR: false
     });
   };
 
   return (
     <Layout 
-      title={`${project.name} - Afina DAO Wiki`}
+      title={`${getTranslatedName()} - Afina DAO Wiki`}
       description={project.description}
       showSidebar={true}
     >
       <div className="space-y-8">
         {/* Банер проекта */}
         {project.image && (
-          <div className="relative w-full h-64 md:h-80 rounded-lg overflow-hidden">
+          <div className="relative w-full h-64 md:h-96 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/20">
             <img 
               src={project.image} 
               alt={`Баннер ${project.name}`}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const parent = target.parentElement;
+                if (parent) {
+                  parent.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400">Изображение не загружено</div>';
+                }
+              }}
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
           </div>
         )}
 
         {/* Заголовок */}
         <div className="mb-8">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-            {project.name}
+            {getTranslatedName()}
           </h1>
           <div className="flex items-center gap-4 mb-4">
             <Badge className={PROJECT_STATUS_COLORS[project.status]}>
@@ -175,7 +197,7 @@ export default function ProjectPage() {
             </Badge>
             <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
               <Calendar className="h-4 w-4 mr-1" />
-              Создан: {formatDate(project.createdAt)}
+              {t('created')}: {formatDate(project.createdAt)}
             </div>
           </div>
         </div>
@@ -310,7 +332,7 @@ export default function ProjectPage() {
         {(project.website || project.telegramPost) && (
           <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Ссылки проекта
+              {t('projectLinks')}
             </h2>
             
             <div className="flex flex-wrap gap-4">

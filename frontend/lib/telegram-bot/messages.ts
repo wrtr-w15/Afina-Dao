@@ -43,8 +43,9 @@ Email нужен для приглашения в Notion с гайдами.
 
 Сумма к оплате: <b>{{priceUsdt}} USDT</b>
 
-⚠️ Сейчас оплата работает в тестовом режиме.
-Нажмите "Оплатить" для симуляции успешной оплаты.`,
+{{paymentInfo}}
+
+⚠️ После оплаты нажмите «Проверить статус» или дождитесь автоматического уведомления.`,
   paymentSuccess: `✅ <b>Оплата прошла успешно!</b>
 
 🎉 Ваша подписка активирована!
@@ -81,7 +82,7 @@ Email нужен для приглашения в Notion с гайдами.
 • База знаний в Notion с гайдами
 
 <b>Поддержка:</b>
-Если у вас возникли вопросы — @afina_support`,
+Если у вас возникли вопросы, напишите {{supportText}}`,
   account: `👤 <b>Личный кабинет</b>
 
 📊 <b>Подписка:</b> {{subscriptionStatus}}
@@ -108,15 +109,41 @@ Email нужен для приглашения в Notion с гайдами.
 
 Подписывайтесь, чтобы быть в курсе новостей:`,
   selectPlan_header: `💰 <b>Тариф «{{tariffName}}»</b>\n\n`,
-  selectPlan_footer: `\n\nВыберите период:`
+  selectPlan_footer: `\n\nВыберите период:`,
+  askPromocode: `🎫 <b>Введите промокод</b>
+
+Введите код промокода для получения скидки на подписку.
+
+Или отправьте "отмена" для отмены.`
 };
 
 async function text(key: string, params?: Record<string, string>): Promise<string> {
-  const fromDb = await getBotText(key, params);
-  if (fromDb.trim()) return fromDb;
-  const def = defaults[key];
-  if (def) return replaceParams(def, params);
-  return '';
+  try {
+    const fromDb = await getBotText(key, params);
+    console.log(`[Telegram Bot] text() function - key: "${key}", fromDb:`, fromDb ? `"${fromDb.substring(0, 100)}..." (length: ${fromDb.length}, trimmed: ${fromDb.trim().length})` : 'null/empty');
+    if (fromDb && fromDb.trim()) {
+      console.log(`[Telegram Bot] Text "${key}" loaded from DB successfully`);
+      return fromDb;
+    }
+    const def = defaults[key];
+    console.log(`[Telegram Bot] Text "${key}" not found in DB, checking defaults:`, def ? `"${def.substring(0, 100)}..." (length: ${def.length})` : 'not found');
+    if (def) {
+      const result = replaceParams(def, params);
+      console.log(`[Telegram Bot] Text "${key}" using default:`, result ? `"${result.substring(0, 100)}..." (length: ${result.length})` : 'empty');
+      return result;
+    }
+    console.warn(`[Telegram Bot] Text "${key}" not found in DB or defaults`);
+    return '';
+  } catch (error) {
+    console.error(`[Telegram Bot] Error loading text "${key}":`, error);
+    const def = defaults[key];
+    if (def) {
+      const result = replaceParams(def, params);
+      console.log(`[Telegram Bot] Using default text for "${key}" due to error:`, result ? `"${result.substring(0, 100)}..."` : 'empty');
+      return result;
+    }
+    return '';
+  }
 }
 
 function replaceParams(s: string, params?: Record<string, string>): string {
@@ -155,30 +182,50 @@ export const messages = {
   askEmail: (): Promise<string> => text('askEmail'),
   invalidEmail: (): Promise<string> => text('invalidEmail'),
 
-  confirmOrder: async (data: { planName: string; period: number; priceUsdt: number; discordUsername?: string; email?: string }): Promise<string> => {
+  confirmOrder: async (data: { planName: string; period: number; priceUsdt: number; discordUsername?: string; email?: string; promocode?: string; originalPrice?: number; discountPercent?: number; discountType?: 'percent' | 'fixed'; discountAmount?: number }): Promise<string> => {
     const discordLine = data.discordUsername ? `✅ <code>${data.discordUsername}</code>` : '❌ Не подключён';
     const emailLine = data.email ? `✅ <code>${data.email}</code>` : '❌ Не указан';
-    return text('confirmOrder', {
+    let promocodeLine = '';
+    if (data.promocode && data.originalPrice) {
+      const discount = data.originalPrice - data.priceUsdt;
+      const discountText = data.discountType === 'fixed' && data.discountAmount
+        ? `${data.discountAmount.toFixed(2)} USDT`
+        : `${data.discountPercent || 0}%`;
+      promocodeLine = `\n\n🎫 <b>Промокод:</b> ${data.promocode}\n` +
+        `💰 <b>Скидка:</b> ${discountText}\n` +
+        `💵 <b>Было:</b> ${data.originalPrice.toFixed(2)} USDT\n` +
+        `💵 <b>Стало:</b> ${data.priceUsdt.toFixed(2)} USDT`;
+    }
+    const baseText = await text('confirmOrder', {
       planName: data.planName,
       period: String(data.period),
       priceUsdt: String(data.priceUsdt),
       discordLine,
       emailLine
     });
+    return baseText + promocodeLine;
   },
 
-  awaitingPayment: (priceUsdt: number): Promise<string> => text('awaitingPayment', { priceUsdt: String(priceUsdt) }),
+  awaitingPayment: async (priceUsdt: number, paymentUrl?: string): Promise<string> => {
+    const paymentInfo = paymentUrl 
+      ? `Нажмите кнопку ниже, чтобы перейти на страницу оплаты.\nМожно оплатить USDT на сети Arbitrum.`
+      : `⚠️ Ошибка создания платежа. Попробуйте позже.`;
+    return await text('awaitingPayment', { priceUsdt: String(priceUsdt), paymentInfo });
+  },
   paymentSuccess: (): Promise<string> => text('paymentSuccess'),
   paymentFailed: (): Promise<string> => text('paymentFailed'),
 
   subscriptionStatus: async (hasSubscription: boolean, endDate?: string, daysLeft?: number): Promise<string> => {
     if (hasSubscription && endDate != null && daysLeft != null) {
-      return text('subscriptionStatus_active', { endDate, daysLeft: String(daysLeft) });
+      return await text('subscriptionStatus_active', { endDate, daysLeft: String(daysLeft) });
     }
-    return text('subscriptionStatus_inactive');
+    return await text('subscriptionStatus_inactive');
   },
 
-  help: (): Promise<string> => text('help'),
+  help: async (supportText?: string): Promise<string> => {
+    const defaultSupport = supportText || 'в поддержку';
+    return await text('help', { supportText: defaultSupport });
+  },
 
   account: async (data: {
     hasSubscription: boolean;
@@ -198,12 +245,20 @@ export const messages = {
     const emailStatus = data.emailConnected && data.email
       ? `✅ <code>${data.email}</code>`
       : '❌ Не указан';
-    return text('account', { subscriptionStatus, discordStatus, emailStatus });
+    return await text('account', { subscriptionStatus, discordStatus, emailStatus });
   },
 
   cancelled: (): Promise<string> => text('cancelled'),
   error: (): Promise<string> => text('error'),
   discordDisconnected: (): Promise<string> => text('discordDisconnected'),
   emailDisconnected: (): Promise<string> => text('emailDisconnected'),
-  socials: (): Promise<string> => text('socials')
+  socials: (): Promise<string> => text('socials'),
+  
+  paymentHistory: async (paymentList: string, paginationInfo: string): Promise<string> => {
+    return await text('paymentHistory', { paymentList, paginationInfo });
+  },
+  
+  paymentHistoryEmpty: (): Promise<string> => text('paymentHistory_empty'),
+  
+  askPromocode: (): Promise<string> => text('askPromocode')
 };

@@ -90,7 +90,16 @@ export async function POST(request: NextRequest) {
       data.image || null
     ]);
 
-    // Сохраняем переводы проекта (если есть)
+    // Убеждаемся, что в project_translations есть колонка content
+    try {
+      await connection.execute(`
+        ALTER TABLE project_translations ADD COLUMN content TEXT NULL
+      `);
+    } catch (e: any) {
+      if (e.errno !== 1060) throw e; // 1060 = колонка уже существует
+    }
+
+    // Сохраняем переводы проекта (включая content)
     if (data.translations && Array.isArray(data.translations)) {
       for (const translation of data.translations) {
         await connection.execute(`

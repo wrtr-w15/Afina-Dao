@@ -1,89 +1,79 @@
 #!/bin/bash
 
 # Afina DAO Wiki - Development Startup Script
+# Поднимает Next.js и Telegram-бота одной командой для разработки
 
-echo "🚀 Starting Afina DAO Wiki Development Environment"
-echo "=================================================="
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Check if Node.js is installed
+echo "🚀 Afina DAO Wiki — среда разработки"
+echo "===================================="
+
+# Проверка Node.js
 if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 18+ first."
+    echo "❌ Node.js не найден. Установите Node.js 18+."
     exit 1
 fi
 
-# Check if npm is installed
-if ! command -v npm &> /dev/null; then
-    echo "❌ npm is not installed. Please install npm first."
-    exit 1
-fi
-
-# Check Node.js version
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
 if [ "$NODE_VERSION" -lt 18 ]; then
-    echo "❌ Node.js version 18+ is required. Current version: $(node -v)"
+    echo "❌ Нужен Node.js 18+. Сейчас: $(node -v)"
     exit 1
 fi
 
-echo "✅ Node.js version: $(node -v)"
-echo "✅ npm version: $(npm -v)"
+echo "✅ Node.js: $(node -v) | npm: $(npm -v)"
 
-# Install dependencies if node_modules doesn't exist
+# Зависимости
 echo ""
-echo "📦 Installing dependencies..."
-
-# Frontend dependencies (main app - includes API routes)
+echo "📦 Зависимости..."
 if [ ! -d "frontend/node_modules" ]; then
-    echo "Installing frontend dependencies..."
+    echo "Установка зависимостей frontend..."
     (cd frontend && npm install)
 fi
+echo "✅ Зависимости установлены"
 
-echo "✅ Dependencies installed"
+# .env.local для frontend (бот и API)
+if [ ! -f "frontend/.env.local" ]; then
+    if [ -f "frontend/.env.example" ]; then
+        echo ""
+        echo "📄 Создаю frontend/.env.local из .env.example..."
+        cp frontend/.env.example frontend/.env.local
+        echo "⚠️  Отредактируйте frontend/.env.local (БД, TELEGRAM_SUBSCRIPTION_BOT_TOKEN и др.)"
+    else
+        echo "⚠️  Нет frontend/.env.local и frontend/.env.example. Создайте .env.local вручную."
+    fi
+else
+    echo "✅ frontend/.env.local найден"
+fi
 
-# Check if MySQL is running (optional)
+# MySQL (опционально)
 echo ""
-echo "🔍 Checking MySQL connection..."
+echo "🔍 Проверка MySQL..."
 if command -v mysql &> /dev/null; then
     if mysql -u afina_user -pafina_password -e "SELECT 1;" 2>/dev/null; then
-        echo "✅ MySQL is running and accessible"
+        echo "✅ MySQL доступен"
     else
-        echo "⚠️  MySQL is not accessible. Please start MySQL and create the database:"
+        echo "⚠️  MySQL недоступен. При необходимости:"
         echo "   CREATE DATABASE afina_dao_wiki;"
         echo "   CREATE USER 'afina_user'@'localhost' IDENTIFIED BY 'afina_password';"
         echo "   GRANT ALL PRIVILEGES ON afina_dao_wiki.* TO 'afina_user'@'localhost';"
         echo "   FLUSH PRIVILEGES;"
     fi
 else
-    echo "⚠️  MySQL client not found. Please install MySQL and create the database."
+    echo "⚠️  Клиент mysql не найден. Установите MySQL при необходимости."
 fi
 
+# Запуск Next.js + Telegram-бот в одном процессе (concurrently)
 echo ""
-echo "🎯 Starting development server..."
+echo "🎯 Запуск: Next.js + Telegram-бот (одна команда, остановка: Ctrl+C)"
+echo "================================================================"
+echo "🌐 Приложение:  http://localhost:3000"
+echo "🔧 API:         http://localhost:3000/api"
+echo "👤 Админка:     http://localhost:3000/admin"
+echo "🤖 Бот:         polling → /api/telegram/bot"
+echo "================================================================"
 echo ""
 
-# Function to handle cleanup on exit
-cleanup() {
-    echo ""
-    echo "🛑 Shutting down server..."
-    kill $FRONTEND_PID 2>/dev/null
-    exit 0
-}
-
-# Set up signal handlers
-trap cleanup SIGINT SIGTERM
-
-# Start frontend (Next.js with API routes)
-echo "🎨 Starting Next.js server (http://localhost:3000)..."
-(cd frontend && npm run dev) &
-FRONTEND_PID=$!
-
-echo ""
-echo "✅ Development server started!"
-echo ""
-echo "🌐 App: http://localhost:3000"
-echo "🔧 API: http://localhost:3000/api"
-echo "👤 Admin: http://localhost:3000/admin"
-echo ""
-echo "Press Ctrl+C to stop the server"
-
-# Wait for process
-wait $FRONTEND_PID
+# Запуск в foreground — один Ctrl+C останавливает и Next.js, и бота
+cd frontend && exec npm run dev:all

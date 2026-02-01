@@ -102,8 +102,26 @@ export async function GET(request: NextRequest) {
       // Игнорируем
     }
 
-    // Получаем подписки с данными пользователя и тарифа
-    const [rows] = await connection.execute(`
+    // Добавляем is_free (бесплатная подписка — не входит в прибыль)
+    try {
+      const [colFree] = await connection.execute(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions' AND COLUMN_NAME = 'is_free'
+      `);
+      if ((colFree as any[]).length === 0) {
+        await connection.execute(`
+          ALTER TABLE subscriptions ADD COLUMN is_free TINYINT(1) DEFAULT 0 COMMENT 'Бесплатная подписка, не входит в прибыль'
+        `);
+      }
+    } catch (e) {
+      // Игнорируем
+    }
+
+    // Одинаковая collation в JOIN — избегаем ER_CANT_AGGREGATE_2COLLATIONS; LIMIT/OFFSET — числа, не плейсхолдеры
+    const limitNum = Math.max(1, Math.min(100, limit));
+    const offsetNum = Math.max(0, offset);
+    const [rows] = await connection.execute(
+      `
       SELECT 
         s.*,
         u.telegram_id,
@@ -114,15 +132,18 @@ export async function GET(request: NextRequest) {
         u.email,
         t.id as tariff_id_ref,
         t.name as tariff_name,
-        t.price as tariff_price,
-        t.duration_days as tariff_duration_days
+        tp.monthly_price as tariff_monthly_price,
+        tp.period_months as tariff_period_months
       FROM subscriptions s
-      LEFT JOIN users u ON s.user_id = u.id
-      LEFT JOIN tariffs t ON s.tariff_id = t.id
+      LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN tariffs t ON s.tariff_id COLLATE utf8mb4_unicode_ci = t.id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN tariff_prices tp ON s.tariff_price_id COLLATE utf8mb4_unicode_ci = tp.id COLLATE utf8mb4_unicode_ci
       WHERE ${whereClause}
       ORDER BY s.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...params, limit, offset]);
+      LIMIT ${limitNum} OFFSET ${offsetNum}
+    `,
+      params
+    );
 
     // Получаем общее количество
     const [countResult] = await connection.execute(`
@@ -142,6 +163,7 @@ export async function GET(request: NextRequest) {
       status: row.status,
       startDate: row.start_date,
       endDate: row.end_date,
+      isFree: Boolean(row.is_free),
       discordRoleGranted: Boolean(row.discord_role_granted),
       notionAccessGranted: Boolean(row.notion_access_granted),
       autoRenew: Boolean(row.auto_renew),
@@ -159,8 +181,8 @@ export async function GET(request: NextRequest) {
       tariff: row.tariff_id_ref ? {
         id: row.tariff_id_ref,
         name: row.tariff_name,
-        price: parseFloat(row.tariff_price),
-        durationDays: row.tariff_duration_days
+        price: row.tariff_monthly_price != null ? parseFloat(row.tariff_monthly_price) : parseFloat(row.amount),
+        durationDays: (row.tariff_period_months ?? row.period_months) ? (row.tariff_period_months ?? row.period_months) * 30 : null
       } : undefined
     }));
 
@@ -232,27 +254,29 @@ export async function POST(request: NextRequest) {
       endDate = new Date(data.endDate);
     }
 
-    // Добавляем tariff_id колонку если нет
+    // Добавляем tariff_id и is_free колонки если нет
     try {
       const [columns] = await connection.execute(`
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = DATABASE() 
-        AND TABLE_NAME = 'subscriptions' 
-        AND COLUMN_NAME = 'tariff_id'
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions' 
+        AND COLUMN_NAME IN ('tariff_id', 'is_free')
       `);
-      if ((columns as any[]).length === 0) {
-        await connection.execute(`
-          ALTER TABLE subscriptions ADD COLUMN tariff_id VARCHAR(36) AFTER pricing_id
-        `);
+      const have = (columns as any[]).map((c: any) => c.COLUMN_NAME);
+      if (!have.includes('tariff_id')) {
+        await connection.execute(`ALTER TABLE subscriptions ADD COLUMN tariff_id VARCHAR(36) AFTER pricing_id`);
+      }
+      if (!have.includes('is_free')) {
+        await connection.execute(`ALTER TABLE subscriptions ADD COLUMN is_free TINYINT(1) DEFAULT 0`);
       }
     } catch (e) {
       // Игнорируем
     }
 
+    const isFree = Boolean(data.isFree);
     await connection.execute(`
       INSERT INTO subscriptions 
-        (id, user_id, pricing_id, tariff_id, period_months, amount, currency, status, start_date, end_date, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, user_id, pricing_id, tariff_id, period_months, amount, currency, status, start_date, end_date, is_free, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id,
       data.userId,
@@ -264,6 +288,7 @@ export async function POST(request: NextRequest) {
       data.status || 'active',
       now,
       endDate,
+      isFree ? 1 : 0,
       data.notes || null
     ]);
 

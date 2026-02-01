@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "telegram-bot": "node scripts/telegram-bot.js",
+    "clean": "rm -rf .next",
+    "dev:clean": "npm run clean && npm run dev",
+    "dev:all:clean": "npm run clean && npm run dev:all",
+    "bot": "npx tsx scripts/bot-polling.ts",
+    "telegram-bot": "npm run bot",
     "discord-bot": "npx tsx scripts/discord-bot.ts",
     "scheduler": "npx tsx scripts/scheduler.ts",
     "migrate": "npx tsx scripts/migrate.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run discord-bot\""
+    "dev:all": "concurrently -n \"next,bot\" -c \"cyan,yellow\" \"npm run dev\" \"npm run bot\""
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -32,7 +36,8 @@
     "ogl": "^1.0.11",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zlib-sync": "^0.1.10"
   },
   "devDependencies": {
     "@types/js-cookie": "^3.0.6",

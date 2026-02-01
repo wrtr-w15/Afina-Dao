@@ -57,6 +57,33 @@
     "lightTheme": "Світла тема",
     "darkTheme": "Темна тема"
   },
+  "notFound": {
+    "description": "Сторінку не знайдено. Можливо, її переміщено або вона більше не існує.",
+    "backToHome": "На головну"
+  },
+  "contacts": {
+    "title": "Контакти",
+    "description": "Зв'язок з командою Afina DAO",
+    "telegramChannel": "Telegram‑канал",
+    "telegramChannelDesc": "Новини та анонси спільноти",
+    "discordServer": "Discord‑сервер",
+    "discordServerDesc": "Спілкування та підтримка в Discord",
+    "support": "Підтримка",
+    "supportDesc": "Напишіть у Telegram — відповімо на будь-які питання",
+    "supportTg": "Написати в Telegram",
+    "goToChannel": "Перейти в канал",
+    "goToServer": "Перейти на сервер",
+    "noLinksYet": "Посилання поки не налаштовані. Адміністратор може додати їх у розділі «Посилання контактів»."
+  },
+  "project": {
+    "created": "Створено",
+    "description": "Опис",
+    "projectLinks": "Посилання проекту",
+    "notFound": "Проект не знайдено",
+    "notFoundDesc": "Запитаний проект не існує або був видалений",
+    "backToHome": "Повернутися на головну",
+    "loading": "Завантаження..."
+  },
   "search": {
     "placeholder": "Пошук",
     "noResults": "Нічого не знайдено",

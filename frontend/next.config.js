@@ -1,3 +1,4 @@
+const path = require('path');
 const withNextIntl = require('next-intl/plugin')(
   // This is the default (also the `src` folder is supported out of the box)
   './i18n.ts'
@@ -5,6 +6,10 @@ const withNextIntl = require('next-intl/plugin')(
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Явный абсолютный корень для Turbopack (каталог frontend с package.json и node_modules)
+  turbopack: { root: path.resolve(__dirname) },
+  // Не бандлить discord.js и zlib-sync (native-модули)
+  serverExternalPackages: ['discord.js', 'zlib-sync'],
   // Production optimizations
   compress: true,
   poweredByHeader: false,

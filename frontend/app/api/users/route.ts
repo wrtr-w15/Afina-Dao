@@ -389,9 +389,10 @@ export async function POST(request: NextRequest) {
   const data = await request.json();
 
   // Валидация - нужен хотя бы один идентификатор
-  if (!data.telegramId && !data.discordId && !data.email) {
-    return NextResponse.json({ 
-      error: 'Нужен хотя бы один идентификатор: Telegram ID, Discord ID или Email' 
+  const hasId = data.telegramId || data.discordId || (data.email && String(data.email).trim()) || (data.telegramUsername && String(data.telegramUsername).trim());
+  if (!hasId) {
+    return NextResponse.json({
+      error: 'Нужен хотя бы один идентификатор: Telegram ID, Telegram username, Discord ID или Email'
     }, { status: 400 });
   }
 
@@ -399,7 +400,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureTables(connection);
 
-    // Проверяем уникальность
+    // Уникальность: с одной почтой / Discord / Telegram — только один аккаунт
     if (data.telegramId) {
       const [existing] = await connection.execute(
         'SELECT id FROM users WHERE telegram_id = ?',
@@ -410,23 +411,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (data.discordId) {
+    const telegramUsernameNorm = data.telegramUsername ? String(data.telegramUsername).trim().replace(/^@/, '') : '';
+    if (telegramUsernameNorm) {
+      const [existing] = await connection.execute(
+        'SELECT id FROM users WHERE LOWER(TRIM(REPLACE(COALESCE(telegram_username,\'\'), \'@\', \'\'))) = LOWER(?) AND COALESCE(telegram_username,\'\') != \'\'',
+        [telegramUsernameNorm]
+      );
+      if ((existing as any[]).length > 0) {
+        return NextResponse.json({ error: 'Пользователь с таким Telegram username уже существует' }, { status: 400 });
+      }
+    }
+
+    if (data.discordId && String(data.discordId).trim()) {
       const [existing] = await connection.execute(
         'SELECT id FROM users WHERE discord_id = ?',
-        [data.discordId]
+        [data.discordId.trim()]
       );
       if ((existing as any[]).length > 0) {
         return NextResponse.json({ error: 'Пользователь с таким Discord ID уже существует' }, { status: 400 });
       }
     }
 
-    if (data.email) {
+    const emailNorm = data.email ? String(data.email).trim() : '';
+    if (emailNorm) {
       const [existing] = await connection.execute(
-        'SELECT id FROM users WHERE email = ?',
-        [data.email]
+        'SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND email IS NOT NULL AND email != \'\'',
+        [emailNorm]
       );
       if ((existing as any[]).length > 0) {
-        return NextResponse.json({ error: 'Пользователь с таким Email уже существует' }, { status: 400 });
+        return NextResponse.json({ error: 'Пользователь с такой почтой уже существует' }, { status: 400 });
       }
     }
 
@@ -451,10 +464,11 @@ export async function POST(request: NextRequest) {
       subscriptionId = crypto.randomUUID();
       const now = new Date();
       const endDate = new Date(data.subscriptionEndDate);
+      const isFree = Boolean(data.subscriptionIsFree);
 
-      // Получаем информацию о тарифе если указан
+      // Получаем информацию о тарифе если указан (для платной подписки)
       let periodMonths = 1;
-      if (data.tariffPriceId) {
+      if (!isFree && data.tariffPriceId) {
         try {
           const [priceRows] = await connection.execute(
             'SELECT period_months FROM tariff_prices WHERE id = ?',
@@ -468,18 +482,29 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      try {
+        const [col] = await connection.execute(`
+          SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions' AND COLUMN_NAME = 'is_free'
+        `);
+        if ((col as any[]).length === 0) {
+          await connection.execute(`ALTER TABLE subscriptions ADD COLUMN is_free TINYINT(1) DEFAULT 0`);
+        }
+      } catch (_) {}
+
       await connection.execute(`
-        INSERT INTO subscriptions (id, user_id, tariff_id, tariff_price_id, period_months, amount, currency, status, start_date, end_date)
-        VALUES (?, ?, ?, ?, ?, ?, 'USDT', 'active', ?, ?)
+        INSERT INTO subscriptions (id, user_id, tariff_id, tariff_price_id, period_months, amount, currency, status, start_date, end_date, is_free)
+        VALUES (?, ?, ?, ?, ?, ?, 'USDT', 'active', ?, ?, ?)
       `, [
         subscriptionId,
         userId,
-        data.tariffId || null,
-        data.tariffPriceId || null,
+        isFree ? null : (data.tariffId || null),
+        isFree ? null : (data.tariffPriceId || null),
         periodMonths,
-        data.subscriptionAmount || 0,
+        isFree ? 0 : (data.subscriptionAmount || 0),
         now,
-        endDate
+        endDate,
+        isFree ? 1 : 0
       ]);
     }
 

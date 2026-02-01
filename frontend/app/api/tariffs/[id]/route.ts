@@ -66,11 +66,20 @@ export async function GET(
     // Получаем статистику использования тарифа
     let usageStats = { totalSubscriptions: 0, activeSubscriptions: 0, totalRevenue: 0 };
     try {
+      try {
+        const [col] = await connection.execute(`
+          SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions' AND COLUMN_NAME = 'is_free'
+        `);
+        if ((col as any[]).length === 0) {
+          await connection.execute(`ALTER TABLE subscriptions ADD COLUMN is_free TINYINT(1) DEFAULT 0`);
+        }
+      } catch (_) {}
       const [stats] = await connection.execute(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
-          COALESCE(SUM(amount), 0) as revenue
+          COALESCE(SUM(CASE WHEN COALESCE(is_free, 0) = 0 THEN amount ELSE 0 END), 0) as revenue
         FROM subscriptions
         WHERE tariff_id = ?
       `, [id]);

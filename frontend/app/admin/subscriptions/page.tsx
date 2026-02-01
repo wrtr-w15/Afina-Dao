@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { normalizeErrorMessage } from '@/lib/error-utils';
 import { 
   Users, 
   Search, 
@@ -32,6 +33,7 @@ interface Subscription {
   status: 'pending' | 'active' | 'expired' | 'cancelled';
   startDate?: string;
   endDate?: string;
+  isFree?: boolean;
   discordRoleGranted: boolean;
   notionAccessGranted: boolean;
   createdAt: string;
@@ -54,6 +56,7 @@ interface EditForm {
   status: string;
   endDate: string;
   notes: string;
+  isFree: boolean;
 }
 
 const statusConfig = {
@@ -134,7 +137,8 @@ export default function SubscriptionsPage() {
     setEditForm({
       status: sub.status,
       endDate: sub.endDate ? new Date(sub.endDate).toISOString().split('T')[0] : '',
-      notes: ''
+      notes: '',
+      isFree: Boolean(sub.isFree)
     });
     setError(null);
   };
@@ -152,7 +156,8 @@ export default function SubscriptionsPage() {
         body: JSON.stringify({
           status: editForm.status,
           endDate: editForm.endDate ? new Date(editForm.endDate).toISOString() : null,
-          notes: editForm.notes || null
+          notes: editForm.notes || null,
+          isFree: editForm.isFree
         })
       });
 
@@ -182,13 +187,14 @@ export default function SubscriptionsPage() {
         body: JSON.stringify({ status: 'cancelled' })
       });
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         loadSubscriptions();
       } else {
-        alert('Ошибка деактивации');
+        alert(data.error || 'Ошибка деактивации');
       }
     } catch (error) {
-      alert('Ошибка деактивации');
+      alert('Ошибка деактивации: ' + normalizeErrorMessage(error));
     }
   };
 
@@ -209,13 +215,14 @@ export default function SubscriptionsPage() {
         })
       });
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         loadSubscriptions();
       } else {
-        alert('Ошибка активации');
+        alert(data.error || 'Ошибка активации');
       }
     } catch (error) {
-      alert('Ошибка активации');
+      alert('Ошибка активации: ' + (error instanceof Error ? error.message : 'сеть'));
     }
   };
 
@@ -234,13 +241,14 @@ export default function SubscriptionsPage() {
         })
       });
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         loadSubscriptions();
       } else {
-        alert('Ошибка продления');
+        alert(data.error || 'Ошибка продления');
       }
     } catch (error) {
-      alert('Ошибка продления');
+      alert('Ошибка продления: ' + normalizeErrorMessage(error));
     }
   };
 
@@ -412,6 +420,9 @@ export default function SubscriptionsPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div>
+                            {sub.isFree && (
+                              <span className="inline-block mr-2 px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-400">Бесплатная</span>
+                            )}
                             {sub.tariff ? (
                               <>
                                 <p className="text-white font-medium">{sub.tariff.name}</p>
@@ -602,6 +613,19 @@ export default function SubscriptionsPage() {
                     rows={2}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
                   />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="edit-isFree"
+                    checked={editForm.isFree}
+                    onChange={(e) => setEditForm({ ...editForm, isFree: e.target.checked })}
+                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500"
+                  />
+                  <label htmlFor="edit-isFree" className="text-sm text-gray-300">
+                    Бесплатная подписка (не входит в прибыль)
+                  </label>
                 </div>
 
                 {/* Quick actions */}

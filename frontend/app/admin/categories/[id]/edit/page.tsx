@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { UpdateCategoryData, CATEGORY_COLORS, CATEGORY_ICONS } from '../../../../../types/category';
 import { getCategoryById, updateCategory } from '../../../../../lib/categories';
+import { normalizeErrorMessage } from '../../../../../lib/error-utils';
 
 export default function EditCategoryPage() {
   const router = useRouter();
@@ -98,7 +99,7 @@ export default function EditCategoryPage() {
       }, 1500);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Произошла ошибка');
+      setError(normalizeErrorMessage(err) || 'Произошла ошибка');
     } finally {
       setIsLoading(false);
     }

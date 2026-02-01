@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processUpdate, setWebhook, getMe } from '@/lib/telegram-bot';
+import { preloadAllTexts } from '@/lib/telegram-bot/get-text';
+
+// Предзагрузка текстов при первом запросе
+let textsPreloaded = false;
 
 // POST /api/telegram/bot - webhook для Telegram
 export async function POST(request: NextRequest) {
   try {
+    // Предзагружаем тексты при первом запросе
+    if (!textsPreloaded) {
+      preloadAllTexts().catch(console.error);
+      textsPreloaded = true;
+    }
+
     // В dev режиме пропускаем проверку секрета для polling
     const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -14,7 +24,12 @@ export async function POST(request: NextRequest) {
     }
 
     const update = await request.json();
-    processUpdate(update).catch(console.error);
+    // Обрабатываем асинхронно, не блокируя ответ
+    processUpdate(update).catch((error) => {
+      console.error('[Telegram Bot] Error processing update:', error);
+    });
+    
+    // Сразу отвечаем Telegram, чтобы избежать таймаутов
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Telegram webhook error:', error);

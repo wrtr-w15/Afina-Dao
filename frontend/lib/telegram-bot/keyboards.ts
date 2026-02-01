@@ -21,6 +21,7 @@ export function getMainMenuKeyboard(hasSubscription: boolean): InlineKeyboard {
   }
   
   buttons.push([{ text: '👤 Личный кабинет', callback_data: 'account' }]);
+  buttons.push([{ text: '📜 История платежей', callback_data: 'payment_history' }]);
   buttons.push([{ text: '🌐 Наши соцсети', callback_data: 'socials' }]);
   
   return { inline_keyboard: buttons };
@@ -42,7 +43,7 @@ export function getPlanKeyboard(plans: { id: string; name: string; priceUsdt: nu
 }
 
 // Клавиатура подтверждения заказа
-export function getConfirmKeyboard(needsDiscord: boolean, needsEmail: boolean, discordOAuthUrl?: string): InlineKeyboard {
+export function getConfirmKeyboard(needsDiscord: boolean, needsEmail: boolean, discordOAuthUrl?: string, hasPromocode?: boolean): InlineKeyboard {
   const buttons: InlineButton[][] = [];
   
   if (needsDiscord && discordOAuthUrl) {
@@ -52,6 +53,9 @@ export function getConfirmKeyboard(needsDiscord: boolean, needsEmail: boolean, d
   if (needsEmail) {
     buttons.push([{ text: '📧 Указать Email', callback_data: 'enter_email' }]);
   }
+  
+  // Кнопка промокода всегда доступна
+  buttons.push([{ text: hasPromocode ? '🎫 Изменить промокод' : '🎫 Ввести промокод', callback_data: 'enter_promocode' }]);
   
   if (!needsDiscord && !needsEmail) {
     buttons.push([{ text: '✅ Подтвердить и оплатить', callback_data: 'confirm_order' }]);
@@ -63,13 +67,21 @@ export function getConfirmKeyboard(needsDiscord: boolean, needsEmail: boolean, d
 }
 
 // Клавиатура оплаты
-export function getPaymentKeyboard(): InlineKeyboard {
-  return {
-    inline_keyboard: [
-      [{ text: '💳 Оплатить (тест)', callback_data: 'process_payment' }],
-      [{ text: '❌ Отмена', callback_data: 'cancel_order' }]
-    ]
-  };
+export function getPaymentKeyboard(paymentUrl?: string): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+  
+  if (paymentUrl) {
+    // Кнопка-ссылка на страницу оплаты NOWPayments
+    buttons.push([{ text: '💳 Перейти к оплате', url: paymentUrl }]);
+    buttons.push([{ text: '🔄 Проверить статус', callback_data: 'check_payment_status' }]);
+  } else {
+    // Fallback для тестирования
+    buttons.push([{ text: '💳 Оплатить (тест)', callback_data: 'process_payment' }]);
+  }
+  
+  buttons.push([{ text: '❌ Отмена', callback_data: 'cancel_order' }]);
+  
+  return { inline_keyboard: buttons };
 }
 
 // Клавиатура после успешной оплаты
@@ -99,6 +111,9 @@ export function getAccountKeyboard(options: {
     buttons.push([{ text: '📊 Статус подписки', callback_data: 'check_status' }]);
   }
   
+  // История платежей - будет открываться в браузере
+  buttons.push([{ text: '📜 История платежей', callback_data: 'payment_history' }]);
+  
   // Discord
   if (options.discordConnected) {
     buttons.push([
@@ -118,7 +133,9 @@ export function getAccountKeyboard(options: {
   } else {
     buttons.push([{ text: '📧 Указать Email', callback_data: 'change_email' }]);
   }
-  
+
+  buttons.push([{ text: '🔄 Обновить информацию', callback_data: 'refresh_account_info' }]);
+
   buttons.push([{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]);
   
   return { inline_keyboard: buttons };
@@ -134,14 +151,24 @@ export function getEmailInputKeyboard(): InlineKeyboard {
 }
 
 // Клавиатура соцсетей
-export function getSocialsKeyboard(): InlineKeyboard {
+export function getSocialsKeyboard(telegramChannelUrl?: string, discordInviteUrl?: string): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+  
+  const tgUrl = telegramChannelUrl || 'https://t.me/afina_dao';
+  const discUrl = discordInviteUrl || process.env.DISCORD_INVITE_URL || 'https://discord.gg/afinadao';
+  
+  if (tgUrl) {
+    buttons.push([{ text: '📱 Telegram канал', url: tgUrl }]);
+  }
+  
+  if (discUrl) {
+    buttons.push([{ text: '🎮 Discord сервер', url: discUrl }]);
+  }
+  
+  buttons.push([{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]);
+  
   return {
-    inline_keyboard: [
-      [{ text: '📱 Telegram канал', url: 'https://t.me/afina_dao' }],
-      [{ text: '🎮 Discord сервер', url: process.env.DISCORD_INVITE_URL || 'https://discord.gg/afinadao' }],
-      [{ text: '🐦 Twitter', url: 'https://twitter.com/afina_dao' }],
-      [{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]
-    ]
+    inline_keyboard: buttons
   };
 }
 
@@ -172,6 +199,40 @@ export function getCancelKeyboard(): InlineKeyboard {
       [{ text: '❌ Отмена', callback_data: 'cancel' }]
     ]
   };
+}
+
+// Клавиатура помощи
+export function getHelpKeyboard(supportTg1?: string, supportTg2?: string): InlineKeyboard {
+  const buttons: InlineButton[][] = [];
+  
+  console.log(`[Telegram Bot] getHelpKeyboard called with:`, { supportTg1, supportTg2 });
+  
+  if (supportTg1 && supportTg1.trim()) {
+    const tgUrl = `https://t.me/${supportTg1.replace(/^@/, '')}`;
+    buttons.push([{ text: `💬 Написать @${supportTg1}`, url: tgUrl }]);
+    console.log(`[Telegram Bot] Added support button 1:`, tgUrl);
+  }
+  
+  if (supportTg2 && supportTg2.trim()) {
+    const tgUrl = `https://t.me/${supportTg2.replace(/^@/, '')}`;
+    buttons.push([{ text: `💬 Написать @${supportTg2}`, url: tgUrl }]);
+    console.log(`[Telegram Bot] Added support button 2:`, tgUrl);
+  }
+  
+  // Если нет кнопок поддержки, добавляем хотя бы главное меню
+  if (buttons.length === 0) {
+    console.warn(`[Telegram Bot] No support buttons added, supportTg1=${supportTg1}, supportTg2=${supportTg2}`);
+  }
+  
+  buttons.push([{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]);
+  
+  const result = {
+    inline_keyboard: buttons
+  };
+  
+  console.log(`[Telegram Bot] getHelpKeyboard result:`, JSON.stringify(result));
+  
+  return result;
 }
 
 // Клавиатура назад в главное меню
