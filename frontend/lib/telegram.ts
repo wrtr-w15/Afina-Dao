@@ -72,6 +72,26 @@ export async function setupTelegramWebhook() {
   }
 }
 
+/**
+ * Получает список chat ID из переменной окружения
+ * Поддерживает до 3 chat ID, разделенных запятыми
+ */
+export function getTelegramChatIds(): string[] {
+  const chatIdsEnv = process.env.TELEGRAM_CHAT_ID;
+  if (!chatIdsEnv) {
+    return [];
+  }
+  
+  // Разделяем по запятой, убираем пробелы и пустые значения
+  const chatIds = chatIdsEnv
+    .split(',')
+    .map(id => id.trim())
+    .filter(id => id.length > 0)
+    .slice(0, 3); // Ограничиваем до 3 chat ID
+  
+  return chatIds;
+}
+
 export async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: any) {
   if (!TELEGRAM_BOT_TOKEN) {
     console.error('❌ TELEGRAM_BOT_TOKEN not configured');
@@ -106,6 +126,35 @@ export async function sendTelegramMessage(chatId: string | number, text: string,
     console.error('❌ Error sending Telegram message:', error);
     return false;
   }
+}
+
+/**
+ * Отправляет сообщение на все указанные chat ID (до 3)
+ */
+export async function sendTelegramMessageToAll(text: string, replyMarkup?: any): Promise<boolean> {
+  const chatIds = getTelegramChatIds();
+  
+  if (chatIds.length === 0) {
+    console.warn('⚠️ No Telegram chat IDs configured');
+    return false;
+  }
+
+  const results = await Promise.allSettled(
+    chatIds.map(chatId => sendTelegramMessage(chatId, text, replyMarkup))
+  );
+
+  const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+  const failedCount = results.length - successCount;
+
+  if (successCount > 0) {
+    console.log(`✅ Telegram messages sent to ${successCount}/${chatIds.length} chat IDs`);
+  }
+  
+  if (failedCount > 0) {
+    console.error(`❌ Failed to send Telegram messages to ${failedCount}/${chatIds.length} chat IDs`);
+  }
+
+  return successCount > 0;
 }
 
 export async function answerCallbackQuery(callbackQueryId: string, text: string, showAlert = true) {

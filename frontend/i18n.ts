@@ -14,8 +14,15 @@ export default getRequestConfig(async () => {
     ? localeCookie.value 
     : 'ru';
 
+  const messages = (await import(`./messages/${locale}.json`)).default as Record<string, unknown>;
+  // Ensure home.viewProjects and home.goToCommunity exist (fallback for missing keys)
+  if (messages?.home && typeof messages.home === 'object') {
+    const home = messages.home as Record<string, string>;
+    if (!home.viewProjects) home.viewProjects = locale === 'ru' ? 'Посмотреть проекты' : locale === 'ua' ? 'Переглянути проекти' : 'View projects';
+    if (!home.goToCommunity) home.goToCommunity = locale === 'ru' ? 'Перейти к сообществу' : locale === 'ua' ? 'Перейти до спільноти' : 'Go to community';
+  }
   return {
     locale,
-    messages: (await import(`./messages/${locale}.json`)).default
+    messages
   };
 });

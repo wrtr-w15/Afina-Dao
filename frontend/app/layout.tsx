@@ -4,7 +4,9 @@ import './globals.css';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getLocale } from 'next-intl/server';
+import IntlErrorHandlingProvider from '@/components/IntlErrorHandlingProvider';
 import ErrorHandler from '../components/ErrorHandler';
+import PageBackground from '../components/PageBackground';
 
 const montserrat = Montserrat({ subsets: ['latin'] });
 
@@ -128,9 +130,12 @@ export default async function RootLayout({
       <body className={montserrat.className}>
         <ErrorHandler />
         <NextIntlClientProvider messages={messages}>
-          <ThemeProvider>
-            {children}
-          </ThemeProvider>
+          <IntlErrorHandlingProvider locale={locale}>
+            <ThemeProvider>
+              <PageBackground />
+              {children}
+            </ThemeProvider>
+          </IntlErrorHandlingProvider>
         </NextIntlClientProvider>
       </body>
     </html>

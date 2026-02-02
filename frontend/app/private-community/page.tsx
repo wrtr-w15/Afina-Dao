@@ -15,7 +15,8 @@ import {
   Star,
   LucideIcon,
   FileText,
-  Calendar
+  Calendar,
+  Lock
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Tariff, TariffPrice } from '@/types/tariff';
@@ -274,13 +275,14 @@ function PricingCard({
 
 const TELEGRAM_BOT_LINK = 'https://t.me/AfinaDaoBot';
 
-const roadmapIcons: LucideIcon[] = [Code, Shield, MessageCircle, BookOpen, Lightbulb];
+const roadmapIcons: LucideIcon[] = [Code, Shield, MessageCircle, BookOpen, Lightbulb, Lock];
 const roadmapColors = [
   'from-blue-500 to-cyan-500',
   'from-purple-500 to-pink-500',
   'from-indigo-500 to-violet-500',
   'from-amber-500 to-orange-500',
   'from-rose-500 to-red-500',
+  'from-emerald-500 to-teal-500',
 ];
 
 export default function PrivateCommunityPage() {
@@ -290,9 +292,10 @@ export default function PrivateCommunityPage() {
   const [isLoadingPricing, setIsLoadingPricing] = useState(true);
   const pricingRef = useRef<HTMLDivElement>(null);
   const [pricingVisible, setPricingVisible] = useState(false);
+  const [ctaButtonUrl, setCtaButtonUrl] = useState<string>(TELEGRAM_BOT_LINK);
 
   // Build roadmap items from translations
-  const roadmapItems: RoadmapItemData[] = [1, 2, 3, 4, 5].map((num, index) => ({
+  const roadmapItems: RoadmapItemData[] = [1, 2, 3, 4, 5, 6].map((num, index) => ({
     icon: roadmapIcons[index],
     title: t(`roadmap.item${num}.title`),
     description: t(`roadmap.item${num}.description`),
@@ -301,6 +304,16 @@ export default function PrivateCommunityPage() {
 
   useEffect(() => {
     loadTariffs();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/site-contact-links', { cache: 'no-cache' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        const url = (data?.communityButtonUrl ?? '').trim();
+        setCtaButtonUrl(url || TELEGRAM_BOT_LINK);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -458,7 +471,7 @@ export default function PrivateCommunityPage() {
           }}
         >
           <a
-            href={TELEGRAM_BOT_LINK}
+            href={ctaButtonUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="

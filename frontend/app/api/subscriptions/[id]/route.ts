@@ -3,6 +3,8 @@ import { getConnection } from '@/lib/database';
 import { grantRole, revokeRole } from '@/lib/discord-bot';
 import { grantAccess, revokeAccess } from '@/lib/notion';
 import { grantAccess as grantGoogleDriveAccess, revokeAccess as revokeGoogleDriveAccess } from '@/lib/google-drive';
+import { sendTelegramMessageToAll } from '@/lib/telegram';
+import { sendExpiredNotificationToUser, sendExpiringInDaysNotification } from '@/lib/subscription-notifications';
 import crypto from 'crypto';
 
 /** Приводит ISO-дату или Date к формату MySQL DATETIME (YYYY-MM-DD HH:MM:SS) */
@@ -145,7 +147,7 @@ export async function PUT(
 
     // Проверяем существование подписки (COLLATE устраняет смешение коллаций utf8mb4_unicode_ci / utf8mb4_0900_ai_ci)
     const [existing] = await connection.execute(`
-      SELECT s.*, u.discord_id, u.email, u.google_drive_email 
+      SELECT s.*, u.discord_id, u.email, u.google_drive_email, u.telegram_id, u.telegram_username, u.telegram_first_name
       FROM subscriptions s
       LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
       WHERE s.id = ?
@@ -213,6 +215,8 @@ export async function PUT(
     if (oldStatus !== newStatus) {
       // Если подписка стала активной - выдаём доступы
       if (newStatus === 'active' && oldStatus !== 'active') {
+        // Проверяем, это продление или новая активация
+        const isRenewal = oldStatus === 'expired' || oldStatus === 'cancelled';
         if (subscription.discord_id && !subscription.discord_role_granted) {
           const discordResult = await grantRole(subscription.discord_id);
           if (discordResult.success) {
@@ -263,6 +267,46 @@ export async function PUT(
             console.error('Failed to grant Google Drive access:', e);
           }
         }
+
+        // Уведомляем администраторов о продлении/активации подписки
+        try {
+          const userInfo = subscription.telegram_username 
+            ? `@${subscription.telegram_username}` 
+            : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
+          
+          // Получаем актуальные даты из обновленной подписки
+          const finalEndDate = endDateVal || subscription.end_date;
+          const finalStartDate = startDateVal || subscription.start_date;
+          
+          const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
+          const startDateStr = finalStartDate ? new Date(finalStartDate).toLocaleDateString('ru-RU') : 'не указана';
+          
+          const adminMessage = isRenewal ? `
+🔄 *Подписка продлена*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Статус:* ${oldStatus} → ${newStatus}
+*Начало:* ${startDateStr}
+*Окончание:* ${endDateStr}
+
+*Время:* ${new Date().toLocaleString('ru-RU')}
+          `.trim() : `
+✅ *Подписка активирована*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Статус:* ${oldStatus} → ${newStatus}
+*Начало:* ${startDateStr}
+*Окончание:* ${endDateStr}
+
+*Время:* ${new Date().toLocaleString('ru-RU')}
+          `.trim();
+
+          await sendTelegramMessageToAll(adminMessage);
+        } catch (e) {
+          console.error('Failed to send subscription activation notification:', e);
+        }
       }
 
       // Если подписка стала неактивной - забираем доступы
@@ -300,6 +344,116 @@ export async function PUT(
             }
           } catch (e) {
             console.error('Failed to revoke Google Drive access:', e);
+          }
+        }
+
+        // Уведомляем пользователя в Telegram и Discord (как при естественном истечении)
+        try {
+          await sendExpiredNotificationToUser(connection, subscription);
+        } catch (e) {
+          console.error('Failed to send expired notification to user:', e);
+        }
+
+        // Уведомляем администраторов о деактивации подписки
+        try {
+          const userInfo = subscription.telegram_username 
+            ? `@${subscription.telegram_username}` 
+            : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
+          
+          // Получаем актуальную дату окончания
+          const finalEndDate = endDateVal || subscription.end_date;
+          const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
+          const statusLabel = newStatus === 'expired' ? 'истекла' : 'отменена';
+          
+          const adminMessage = `
+❌ *Подписка ${statusLabel}*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Статус:* ${oldStatus} → ${newStatus}
+*Окончание:* ${endDateStr}
+
+*Время:* ${new Date().toLocaleString('ru-RU')}
+          `.trim();
+
+          await sendTelegramMessageToAll(adminMessage);
+        } catch (e) {
+          console.error('Failed to send subscription deactivation notification:', e);
+        }
+      }
+    }
+
+    // Админ поставил дату окончания в прошлое — считаем подписку истекшей, забираем доступы и уведомляем пользователя
+    const finalEndDate = endDateVal ?? subscription.end_date;
+    const now = new Date();
+    if (
+      endDateVal != null &&
+      new Date(endDateVal) < now &&
+      oldStatus === 'active' &&
+      (data.status === undefined || data.status === 'active')
+    ) {
+      await connection.execute(
+        `UPDATE subscriptions SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [id]
+      );
+      if (subscription.discord_id && subscription.discord_role_granted) {
+        try {
+          await revokeRole(subscription.discord_id);
+          await connection.execute('UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?', [id]);
+        } catch (e) {
+          console.error('Failed to revoke Discord role:', e);
+        }
+      }
+      if (subscription.email && subscription.notion_access_granted) {
+        try {
+          await revokeAccess(subscription.email);
+          await connection.execute('UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?', [id]);
+        } catch (e) {
+          console.error('Failed to revoke Notion access:', e);
+        }
+      }
+      if (subscription.google_drive_email) {
+        try {
+          await revokeGoogleDriveAccess(subscription.google_drive_email);
+          try {
+            await connection.execute('UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?', [id]);
+          } catch (e: any) {
+            if (e?.code !== 'ER_BAD_FIELD_ERROR') console.error('Failed to update google_drive_access_granted:', e);
+          }
+        } catch (e) {
+          console.error('Failed to revoke Google Drive access:', e);
+        }
+      }
+      try {
+        await sendExpiredNotificationToUser(connection, subscription);
+      } catch (e) {
+        console.error('Failed to send expired notification to user:', e);
+      }
+      try {
+        const userInfo = subscription.telegram_username ? `@${subscription.telegram_username}` : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
+        const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
+        await sendTelegramMessageToAll(
+          `❌ *Подписка истекла (дата изменена админом)*\n\n*Пользователь:* ${userInfo}\n*Окончание:* ${endDateStr}\n*Время:* ${now.toLocaleString('ru-RU')}`
+        );
+      } catch (e) {
+        console.error('Failed to send admin notification:', e);
+      }
+    }
+
+    // Админ поставил дату окончания в будущее — при необходимости отправляем уведомление «осталось N дней»
+    if (endDateVal != null) {
+      const endAsDate = new Date(endDateVal);
+      if (endAsDate > now) {
+        const daysLeft = Math.ceil((endAsDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+        if (daysLeft >= 1 && daysLeft <= 31) {
+          try {
+            await sendExpiringInDaysNotification(
+              connection,
+              { id, user_id: subscription.user_id, end_date: endDateVal, telegram_id: subscription.telegram_id },
+              daysLeft
+            );
+          } catch (e) {
+            console.error('Failed to send expiring-in-days notification:', e);
           }
         }
       }

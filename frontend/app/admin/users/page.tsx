@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { useToast } from '@/components/admin/ToastContext';
 import { 
   Users, 
   Search, 
@@ -57,6 +58,7 @@ interface NewUserForm {
 
 export default function UsersPage() {
   const router = useRouter();
+  const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,7 +100,6 @@ export default function UsersPage() {
     subscriptionEndDate: getDefaultEndDate()
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadUsers();
@@ -160,11 +161,11 @@ export default function UsersPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Не удалось удалить пользователя');
       }
-      setError(null);
+      toast.showSuccess('Пользователь удалён');
       setUserToDelete(null);
       await loadUsers();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка удаления');
+      toast.showError(e instanceof Error ? e.message : 'Ошибка удаления');
     } finally {
       setDeleting(false);
     }
@@ -204,22 +205,21 @@ export default function UsersPage() {
   const handleAddUser = async () => {
     // Валидация
     if (!newUser.telegramId && !newUser.discordId && !newUser.email) {
-      setError('Укажите хотя бы один идентификатор: Telegram ID, Discord ID или Email');
+      toast.showError('Укажите хотя бы один идентификатор: Telegram ID, Discord ID или Email');
       return;
     }
 
     if (newUser.createSubscription && !newUser.subscriptionEndDate) {
-      setError('Укажите дату окончания подписки');
+      toast.showError('Укажите дату окончания подписки');
       return;
     }
 
     if (newUser.createSubscription && !newUser.subscriptionIsFree && !newUser.tariffId) {
-      setError('Выберите тариф или отметьте «Бесплатная подписка»');
+      toast.showError('Выберите тариф или отметьте «Бесплатная подписка»');
       return;
     }
 
     setSaving(true);
-    setError(null);
 
     try {
       const response = await fetch('/api/users', {
@@ -247,16 +247,17 @@ export default function UsersPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Не удалось создать пользователя');
+        toast.showError(data.error || 'Не удалось создать пользователя');
         return;
       }
 
       // Успешно создан
+      toast.showSuccess('Пользователь успешно создан');
       resetForm();
       setShowAddModal(false);
       loadUsers();
     } catch (error) {
-      setError('Ошибка при создании пользователя');
+      toast.showError('Ошибка при создании пользователя');
     } finally {
       setSaving(false);
     }
@@ -546,7 +547,7 @@ export default function UsersPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => !deleting && (setUserToDelete(null), setError(null))}
+              onClick={() => !deleting && setUserToDelete(null)}
             />
             <div className="relative bg-[#1a1a2e] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
               <div className="flex items-center gap-3 mb-4">
@@ -565,14 +566,9 @@ export default function UsersPage() {
               <p className="text-gray-400 text-sm mb-6">
                 Будут удалены профиль пользователя, его подписки и связь с платежами. Это действие нельзя отменить.
               </p>
-              {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => { setUserToDelete(null); setError(null); }}
+                  onClick={() => { setUserToDelete(null); }}
                   disabled={deleting}
                   className="px-4 py-2.5 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 disabled:opacity-50 transition-all"
                 >
@@ -618,11 +614,6 @@ export default function UsersPage() {
                 </button>
               </div>
 
-              {error && (
-                <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
 
               <div className="space-y-4">
                 <div>

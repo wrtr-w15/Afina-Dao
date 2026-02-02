@@ -50,7 +50,8 @@ Email нужен для предоставления доступа к Google Dr
 💰 Сумма: <b>{{priceUsdt}} USDT</b>
 
 🎮 Discord: {{discordLine}}
-📧 Email: {{emailLine}}
+📧 Email (Notion): {{notionEmailLine}}
+📁 Email (Google Drive): {{googleDriveEmailLine}}
 
 Всё верно?`,
   awaitingPayment: `💳 <b>Оплата</b>
@@ -98,6 +99,8 @@ Email нужен для предоставления доступа к Google Dr
 <b>Поддержка:</b>
 Если у вас возникли вопросы, напишите {{supportText}}`,
   account: `👤 <b>Личный кабинет</b>
+
+📋 <b>Тариф:</b> {{tariffName}}
 
 📊 <b>Подписка:</b> {{subscriptionStatus}}
 
@@ -197,27 +200,50 @@ export const messages = {
   askEmail: (): Promise<string> => text('askEmail'),
   invalidEmail: (): Promise<string> => text('invalidEmail'),
 
-  confirmOrder: async (data: { planName: string; period: number; priceUsdt: number; discordUsername?: string; email?: string; promocode?: string; originalPrice?: number; discountPercent?: number; discountType?: 'percent' | 'fixed'; discountAmount?: number }): Promise<string> => {
+  confirmOrder: async (data: { planName: string; period: number; priceUsdt: number; discordUsername?: string; email?: string; googleDriveEmail?: string; promocode?: string; originalPrice?: number; discountPercent?: number; discountType?: 'percent' | 'fixed'; discountAmount?: number }): Promise<string> => {
     const discordLine = data.discordUsername ? `✅ <code>${data.discordUsername}</code>` : '❌ Не подключён';
-    const emailLine = data.email ? `✅ <code>${data.email}</code>` : '❌ Не указан';
+    const notionEmailLine = data.email ? `✅ <code>${data.email}</code>` : '❌ Не указан';
+    const googleDriveEmailLine = data.googleDriveEmail ? `✅ <code>${data.googleDriveEmail}</code>` : '❌ Не указан';
+    const priceUsdt = Number(data.priceUsdt);
+    const safePrice = Number.isFinite(priceUsdt) ? priceUsdt : 0;
+    const originalPrice = Number(data.originalPrice);
+    const safeOriginal = Number.isFinite(originalPrice) ? originalPrice : safePrice;
     let promocodeLine = '';
-    if (data.promocode && data.originalPrice) {
-      const discount = data.originalPrice - data.priceUsdt;
-      const discountText = data.discountType === 'fixed' && data.discountAmount
-        ? `${data.discountAmount.toFixed(2)} USDT`
-        : `${data.discountPercent || 0}%`;
+    if (data.promocode && Number.isFinite(safeOriginal)) {
+      const discount = safeOriginal - safePrice;
+      const discountText = data.discountType === 'fixed' && data.discountAmount != null
+        ? `${Number(data.discountAmount).toFixed(2)} USDT`
+        : `${data.discountPercent ?? 0}%`;
       promocodeLine = `\n\n🎫 <b>Промокод:</b> ${data.promocode}\n` +
         `💰 <b>Скидка:</b> ${discountText}\n` +
-        `💵 <b>Было:</b> ${data.originalPrice.toFixed(2)} USDT\n` +
-        `💵 <b>Стало:</b> ${data.priceUsdt.toFixed(2)} USDT`;
+        `💵 <b>Было:</b> ${safeOriginal.toFixed(2)} USDT\n` +
+        `💵 <b>Стало:</b> ${safePrice.toFixed(2)} USDT`;
     }
-    const baseText = await text('confirmOrder', {
+    const params = {
       planName: data.planName,
       period: String(data.period),
-      priceUsdt: String(data.priceUsdt),
+      priceUsdt: String(safePrice),
       discordLine,
-      emailLine
-    });
+      notionEmailLine,
+      googleDriveEmailLine,
+      emailLine: notionEmailLine // для старых шаблонов в БД с {{emailLine}}
+    };
+    let baseText = await text('confirmOrder', params);
+    if (baseText.includes('{{notionEmailLine}}') || baseText.includes('{{googleDriveEmailLine}}')) {
+      baseText = baseText
+        .replace(/\{\{notionEmailLine\}\}/g, notionEmailLine)
+        .replace(/\{\{googleDriveEmailLine\}\}/g, googleDriveEmailLine);
+    }
+    if (baseText.includes('{{emailLine}}')) {
+      baseText = baseText.replace(/\{\{emailLine\}\}/g, notionEmailLine);
+    }
+    // Если в БД старый шаблон (одна строка Email) — заменяем на две строки: Notion и Google Drive
+    if (!baseText.includes('Google Drive') && !baseText.includes('googleDriveEmailLine')) {
+      baseText = baseText.replace(
+        /\n📧 Email[^\n]*: [^\n]+/,
+        '\n📧 Email (Notion): ' + notionEmailLine + '\n☁️ Email (Google Drive): ' + googleDriveEmailLine
+      );
+    }
     return baseText + promocodeLine;
   },
 
@@ -246,6 +272,7 @@ export const messages = {
     hasSubscription: boolean;
     endDate?: string;
     daysLeft?: number;
+    tariffName?: string;
     discordConnected: boolean;
     discordUsername?: string;
     emailConnected: boolean;
@@ -256,6 +283,7 @@ export const messages = {
     const subscriptionStatus = data.hasSubscription && data.endDate != null && data.daysLeft != null
       ? `✅ Активна до <b>${data.endDate}</b> (${data.daysLeft} дн.)`
       : '❌ Нет активной подписки';
+    const tariffName = (data.tariffName && data.tariffName.trim()) ? data.tariffName.trim() : '—';
     const discordStatus = data.discordConnected && data.discordUsername
       ? `✅ <code>${data.discordUsername}</code>`
       : '❌ Не подключён';
@@ -265,7 +293,22 @@ export const messages = {
     const googleDriveStatus = data.googleDriveConnected && data.googleDriveEmail
       ? `✅ <code>${data.googleDriveEmail}</code>`
       : '❌ Не указан';
-    return await text('account', { subscriptionStatus, discordStatus, emailStatus, googleDriveStatus });
+    let accountText = await text('account', { subscriptionStatus, tariffName, discordStatus, emailStatus, googleDriveStatus });
+    // Если в БД старый шаблон без строки «Тариф» — добавляем перед «Подписка»
+    if (!accountText.includes('📋') && !accountText.includes('Тариф:')) {
+      accountText = accountText.replace(
+        /(\n)(📊 <b>Подписка:)/,
+        '$1📋 <b>Тариф:</b> ' + tariffName + '\n\n$2'
+      );
+    }
+    // Если в БД старый шаблон без строки Google Drive — добавляем её перед «Управляйте»
+    if (!accountText.includes('📁') && !accountText.includes('Google Drive')) {
+      accountText = accountText.replace(
+        /(\n)(Управляйте своими данными:)/,
+        '$1📁 <b>Google Drive:</b> ' + googleDriveStatus + '\n\n$2'
+      );
+    }
+    return accountText;
   },
 
   cancelled: (): Promise<string> => text('cancelled'),

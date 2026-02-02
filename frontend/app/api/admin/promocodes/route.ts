@@ -16,6 +16,8 @@ async function ensureTables() {
       max_uses INT DEFAULT NULL,
       used_count INT DEFAULT 0,
       allowed_users JSON NULL,
+      allowed_tariff_ids JSON NULL COMMENT 'Список разрешенных tariff_id для использования промокода. Если NULL - промокод доступен для всех тарифов',
+      extra_days JSON NULL COMMENT 'Дополнительные дни по периодам подписки: {"1": 7, "3": 14} означает +7 дней для 1 месяца, +14 для 3 месяцев',
       is_active BOOLEAN DEFAULT TRUE,
       valid_from DATETIME NULL,
       valid_until DATETIME NULL,
@@ -26,6 +28,20 @@ async function ensureTables() {
       INDEX idx_valid_dates (valid_from, valid_until)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  
+  // Добавляем колонку extra_days если её нет
+  try {
+    await connection.execute(`ALTER TABLE promocodes ADD COLUMN extra_days JSON NULL COMMENT 'Дополнительные дни по периодам подписки: {"1": 7, "3": 14} означает +7 дней для 1 месяца, +14 для 3 месяцев'`);
+  } catch (e: any) {
+    if (!e.message?.includes('Duplicate column name')) throw e;
+  }
+  
+  // Добавляем колонку allowed_tariff_ids если её нет
+  try {
+    await connection.execute(`ALTER TABLE promocodes ADD COLUMN allowed_tariff_ids JSON NULL COMMENT 'Список разрешенных tariff_id для использования промокода. Если NULL - промокод доступен для всех тарифов'`);
+  } catch (e: any) {
+    if (!e.message?.includes('Duplicate column name')) throw e;
+  }
   
   // Добавляем колонки для дат и типа скидки, если их еще нет
   try {
@@ -115,6 +131,8 @@ export async function POST(request: NextRequest) {
       discount_amount = null,
       max_uses = null,
       allowed_users = [],
+      allowed_tariff_ids = null,
+      extra_days = null,
       is_active = true,
       valid_from = null,
       valid_until = null
@@ -165,6 +183,50 @@ export async function POST(request: NextRequest) {
     const id = crypto.randomUUID();
     const allowedUsersJson = type === 'personal' ? JSON.stringify(allowed_users) : null;
     
+    // Валидация allowed_tariff_ids (должен быть массивом строк или null)
+    let allowedTariffIdsJson = null;
+    if (allowed_tariff_ids !== null && allowed_tariff_ids !== undefined) {
+      if (!Array.isArray(allowed_tariff_ids)) {
+        return NextResponse.json(
+          { error: 'allowed_tariff_ids must be an array of tariff IDs or null' },
+          { status: 400 }
+        );
+      }
+      // Проверяем, что все элементы - строки
+      if (allowed_tariff_ids.some(id => typeof id !== 'string')) {
+        return NextResponse.json(
+          { error: 'All elements in allowed_tariff_ids must be strings' },
+          { status: 400 }
+        );
+      }
+      if (allowed_tariff_ids.length > 0) {
+        allowedTariffIdsJson = JSON.stringify(allowed_tariff_ids);
+      }
+    }
+    
+    // Валидация extra_days (должен быть объектом, где ключи - периоды в месяцах, значения - дни)
+    let extraDaysJson = null;
+    if (extra_days) {
+      if (typeof extra_days !== 'object' || Array.isArray(extra_days)) {
+        return NextResponse.json(
+          { error: 'extra_days must be an object with period months as keys and days as values' },
+          { status: 400 }
+        );
+      }
+      // Проверяем, что все значения - положительные числа
+      for (const [period, days] of Object.entries(extra_days)) {
+        const periodNum = parseInt(period);
+        const daysNum = parseInt(String(days));
+        if (isNaN(periodNum) || isNaN(daysNum) || periodNum <= 0 || daysNum <= 0) {
+          return NextResponse.json(
+            { error: `Invalid extra_days: period ${period} must be a positive number, days must be a positive number` },
+            { status: 400 }
+          );
+        }
+      }
+      extraDaysJson = JSON.stringify(extra_days);
+    }
+    
     // Валидация дат
     let validFromDate = null;
     let validUntilDate = null;
@@ -194,9 +256,9 @@ export async function POST(request: NextRequest) {
     }
     
     await connection.execute(
-      `INSERT INTO promocodes (id, code, type, discount_percent, max_uses, allowed_users, is_active, valid_from, valid_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, code.toUpperCase().trim(), type, discount_percent, max_uses, allowedUsersJson, is_active, validFromDate, validUntilDate]
+      `INSERT INTO promocodes (id, code, type, discount_type, discount_percent, discount_amount, max_uses, allowed_users, allowed_tariff_ids, extra_days, is_active, valid_from, valid_until)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, code.toUpperCase().trim(), type, discount_type, discount_percent, discount_amount, max_uses, allowedUsersJson, allowedTariffIdsJson, extraDaysJson, is_active, validFromDate, validUntilDate]
     );
     
     return NextResponse.json({ success: true, id });
@@ -302,6 +364,53 @@ export async function PUT(request: NextRequest) {
       }
       updateFields.push('valid_until = ?');
       updateValues.push(validUntilDate);
+    }
+    if (updates.allowed_tariff_ids !== undefined) {
+      let allowedTariffIdsJson = null;
+      if (updates.allowed_tariff_ids !== null && updates.allowed_tariff_ids !== undefined) {
+        if (!Array.isArray(updates.allowed_tariff_ids)) {
+          return NextResponse.json(
+            { error: 'allowed_tariff_ids must be an array of tariff IDs or null' },
+            { status: 400 }
+          );
+        }
+        if (updates.allowed_tariff_ids.some((id: any) => typeof id !== 'string')) {
+          return NextResponse.json(
+            { error: 'All elements in allowed_tariff_ids must be strings' },
+            { status: 400 }
+          );
+        }
+        if (updates.allowed_tariff_ids.length > 0) {
+          allowedTariffIdsJson = JSON.stringify(updates.allowed_tariff_ids);
+        }
+      }
+      updateFields.push('allowed_tariff_ids = ?');
+      updateValues.push(allowedTariffIdsJson);
+    }
+    if (updates.extra_days !== undefined) {
+      let extraDaysJson = null;
+      if (updates.extra_days) {
+        if (typeof updates.extra_days !== 'object' || Array.isArray(updates.extra_days)) {
+          return NextResponse.json(
+            { error: 'extra_days must be an object with period months as keys and days as values' },
+            { status: 400 }
+          );
+        }
+        // Проверяем, что все значения - положительные числа
+        for (const [period, days] of Object.entries(updates.extra_days)) {
+          const periodNum = parseInt(period);
+          const daysNum = parseInt(String(days));
+          if (isNaN(periodNum) || isNaN(daysNum) || periodNum <= 0 || daysNum <= 0) {
+            return NextResponse.json(
+              { error: `Invalid extra_days: period ${period} must be a positive number, days must be a positive number` },
+              { status: 400 }
+            );
+          }
+        }
+        extraDaysJson = JSON.stringify(updates.extra_days);
+      }
+      updateFields.push('extra_days = ?');
+      updateValues.push(extraDaysJson);
     }
     
     // Проверка что valid_from < valid_until если оба указаны

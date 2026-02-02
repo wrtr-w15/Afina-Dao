@@ -3,6 +3,27 @@ import crypto from 'crypto';
 import { getConnection } from '../../../lib/database';
 import { Project, CreateProjectData, ProjectBlock, ProjectLink } from '../../../types/project';
 
+// Безопасное добавление колонки (игнорирует ошибку если колонка уже существует)
+async function safeAddColumn(connection: any, table: string, columnDef: string): Promise<void> {
+  try {
+    await connection.execute(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
+  } catch (error: any) {
+    // Игнорируем ошибку "Duplicate column name" (код 1060)
+    if (error.errno !== 1060) {
+      throw error;
+    }
+  }
+}
+
+// Проверяем и создаём недостающие колонки в таблице projects
+async function ensureProjectColumns(connection: any): Promise<void> {
+  try {
+    await safeAddColumn(connection, 'projects', 'content TEXT NULL');
+  } catch (error) {
+    console.error('Error ensuring project columns:', error);
+  }
+}
+
 // GET /api/projects - получить все проекты
 export async function GET() {
   const connection = await getConnection();
@@ -63,12 +84,20 @@ export async function POST(request: NextRequest) {
 
     const data: CreateProjectData = await request.json();
     
+    console.log('API received data:', JSON.stringify(data, null, 2));
+    console.log('API received status:', data.status, typeof data.status);
+    
     // Очищаем и валидируем данные
     const cleanStatus = typeof data.status === 'string' && ['active', 'draft', 'inactive'].includes(data.status) 
       ? data.status 
       : 'draft';
     
+    console.log('API cleanStatus:', cleanStatus);
+    
     connection = await getConnection();
+    
+    // Убеждаемся, что все необходимые колонки существуют
+    await ensureProjectColumns(connection);
     
     const projectId = crypto.randomUUID();
     

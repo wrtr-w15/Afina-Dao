@@ -5,6 +5,7 @@ import { grantRole } from '@/lib/discord-bot';
 import { grantAccess } from '@/lib/notion';
 import { grantAccess as grantGoogleDriveAccess } from '@/lib/google-drive';
 import { sendMessage } from '@/lib/telegram-bot';
+import { sendTelegramMessageToAll } from '@/lib/telegram';
 import crypto from 'crypto';
 
 // Проверка подписи IPN
@@ -68,10 +69,13 @@ export async function POST(request: NextRequest) {
     }
 
     const ipnData: IPNPayload = JSON.parse(rawBody);
-    
-    console.log('IPN Data:', {
+    const statusLower = (ipnData.payment_status || '').toLowerCase();
+
+    console.log('[NOWPayments Webhook] IPN Data:', {
       payment_id: ipnData.payment_id,
+      invoice_id: ipnData.invoice_id,
       payment_status: ipnData.payment_status,
+      status_normalized: statusLower,
       order_id: ipnData.order_id,
       actually_paid: ipnData.actually_paid,
       price_amount: ipnData.price_amount
@@ -79,26 +83,65 @@ export async function POST(request: NextRequest) {
 
     const connection = await getConnection();
     try {
-      // Ищем платёж по external_id (invoice_id или payment_id)
       const externalId = ipnData.invoice_id?.toString() || ipnData.payment_id?.toString();
-      
-      const [payments] = await connection.execute(
+      const invoiceIdParam = ipnData.invoice_id != null ? String(ipnData.invoice_id) : null;
+
+      const paymentIdParam = ipnData.payment_id != null ? String(ipnData.payment_id) : null;
+      let payments: any[];
+      const [paymentsRows] = await connection.execute(
         `SELECT p.*, s.user_id, s.id as sub_id, s.period_months, 
-                u.discord_id, u.email, u.google_drive_email, u.telegram_id 
+                u.discord_id, u.email, u.google_drive_email, u.telegram_id,
+                u.telegram_username, u.telegram_first_name
          FROM payments p 
          LEFT JOIN subscriptions s ON p.subscription_id COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
          LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
-         WHERE p.external_id = ? OR JSON_EXTRACT(p.provider_data, '$.invoice_id') = ?`,
-        [externalId, ipnData.invoice_id]
+         WHERE p.external_id = ? 
+            OR JSON_UNQUOTE(JSON_EXTRACT(p.provider_data, '$.invoice_id')) = ?
+            OR JSON_UNQUOTE(JSON_EXTRACT(p.provider_data, '$.payment_id')) = ?`,
+        [externalId, invoiceIdParam ?? externalId, paymentIdParam ?? '']
       );
+      payments = paymentsRows as any[];
 
-      if ((payments as any[]).length === 0) {
-        console.log(`Payment not found for external_id: ${externalId}`);
-        // Возвращаем 200 чтобы NOWPayments не пытался переслать
+      if (payments.length === 0 && ipnData.order_id) {
+        const [byOrderRows] = await connection.execute(
+          `SELECT p.*, s.user_id, s.id as sub_id, s.period_months, 
+                  u.discord_id, u.email, u.google_drive_email, u.telegram_id,
+                  u.telegram_username, u.telegram_first_name
+           FROM payments p 
+           LEFT JOIN subscriptions s ON p.subscription_id COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
+           LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
+           WHERE JSON_UNQUOTE(JSON_EXTRACT(p.provider_data, '$.order_id')) = ?`,
+          [ipnData.order_id]
+        );
+        payments = byOrderRows as any[];
+        if (payments.length > 0) {
+          console.log('[NOWPayments Webhook] Payment found by order_id:', ipnData.order_id);
+        }
+      }
+
+      if (payments.length === 0 && paymentIdParam) {
+        const [byPaymentIdRows] = await connection.execute(
+          `SELECT p.*, s.user_id, s.id as sub_id, s.period_months, 
+                  u.discord_id, u.email, u.google_drive_email, u.telegram_id,
+                  u.telegram_username, u.telegram_first_name
+           FROM payments p 
+           LEFT JOIN subscriptions s ON p.subscription_id COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
+           LEFT JOIN users u ON s.user_id COLLATE utf8mb4_unicode_ci = u.id COLLATE utf8mb4_unicode_ci
+           WHERE p.external_id = ?`,
+          [paymentIdParam]
+        );
+        payments = byPaymentIdRows as any[];
+        if (payments.length > 0) {
+          console.log('[NOWPayments Webhook] Payment found by payment_id as external_id:', paymentIdParam);
+        }
+      }
+
+      if (payments.length === 0) {
+        console.warn('[NOWPayments Webhook] Payment not found for external_id=%s order_id=%s payment_id=%s', externalId, ipnData.order_id, paymentIdParam);
         return NextResponse.json({ received: true, status: 'payment_not_found' });
       }
 
-      const payment = (payments as any[])[0];
+      const payment = payments[0];
 
       // Логируем IPN
       await connection.execute(
@@ -127,9 +170,10 @@ export async function POST(request: NextRequest) {
         [ipnData.payment_id, ipnData.payment_status, payment.id]
       );
 
-      // Обрабатываем статусы платежа
-      switch (ipnData.payment_status) {
+      // Обрабатываем статусы платежа (нормализуем к нижнему регистру — NOWPayments может слать "Finished" и т.д.)
+      switch (statusLower) {
         case PaymentStatuses.FINISHED:
+          console.log('[NOWPayments Webhook] Processing FINISHED for payment id=%s', payment.id);
           await handlePaymentSuccess(connection, payment, ipnData);
           break;
 
@@ -160,10 +204,10 @@ export async function POST(request: NextRequest) {
           );
           
           // Уведомляем пользователя о статусе
-          if (payment.telegram_id && ipnData.payment_status === PaymentStatuses.CONFIRMING) {
+          if (payment.telegram_id && statusLower === PaymentStatuses.CONFIRMING) {
             try {
               await sendMessage(
-                payment.telegram_id,
+                Number(payment.telegram_id),
                 `⏳ <b>Платёж в обработке</b>\n\nВаш платёж получен и находится на подтверждении в блокчейне. Это займёт несколько минут.`
               );
             } catch (e) {
@@ -186,8 +230,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Успешный платёж
-async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNPayload): Promise<void> {
+// Успешный платёж (экспорт для ручного подтверждения через /api/nowpayments/confirm-payment)
+export async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNPayload): Promise<void> {
   if (payment.status === 'completed') {
     console.log(`Payment ${payment.id} already completed`);
     return;
@@ -220,6 +264,45 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
   const periodMonths = payment.period_months || 1;
   const endDate = new Date(now);
   endDate.setMonth(endDate.getMonth() + periodMonths);
+  
+  // Получаем информацию о промокоде и дополнительные дни, если есть
+  let extraDays = 0;
+  try {
+    const [promocodeUsages] = await connection.execute(
+      `SELECT pr.extra_days 
+       FROM promocode_usages pu
+       JOIN promocodes pr ON pu.promocode_id = pr.id
+       WHERE pu.subscription_id = ?`,
+      [payment.sub_id]
+    );
+    
+    if ((promocodeUsages as any[]).length > 0) {
+      const promocode = (promocodeUsages as any[])[0];
+      if (promocode.extra_days) {
+        try {
+          const extraDaysMap = typeof promocode.extra_days === 'string' 
+            ? JSON.parse(promocode.extra_days) 
+            : promocode.extra_days;
+          if (extraDaysMap && typeof extraDaysMap === 'object') {
+            const periodKey = String(periodMonths);
+            if (extraDaysMap[periodKey]) {
+              extraDays = parseInt(String(extraDaysMap[periodKey])) || 0;
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing extra_days from promocode:', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching promocode extra_days:', e);
+  }
+  
+  // Если есть дополнительные дни, добавляем их
+  if (extraDays > 0) {
+    endDate.setDate(endDate.getDate() + extraDays);
+    console.log(`[NOWPayments Webhook] Added ${extraDays} extra days to subscription ${payment.sub_id} for period ${periodMonths} months`);
+  }
 
   await connection.execute(
     `UPDATE subscriptions 
@@ -328,8 +411,9 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
     ]
   );
 
-  // Уведомляем пользователя
-  if (payment.telegram_id) {
+  // Уведомляем пользователя в Telegram (обязательно число для chat_id)
+  const telegramId = payment.telegram_id != null ? Number(payment.telegram_id) : null;
+  if (telegramId) {
     try {
       let accessInfo = '';
       if (discordGranted) accessInfo += '\n✅ Роль в Discord выдана';
@@ -339,13 +423,46 @@ async function handlePaymentSuccess(connection: any, payment: any, ipnData: IPNP
       const discordInvite = process.env.DISCORD_INVITE_URL;
       const discordButton = discordInvite ? `\n\n🎮 <a href="${discordInvite}">Перейти в Discord</a>` : '';
 
-      await sendMessage(
-        payment.telegram_id,
-        `🎉 <b>Оплата прошла успешно!</b>\n\nВаша подписка активирована до <b>${endDate.toLocaleDateString('ru-RU')}</b>.\n\nСумма: <b>${ipnData.actually_paid} ${ipnData.pay_currency.toUpperCase()}</b>${accessInfo}${discordButton}`
-      );
+      const userMessage = `🎉 <b>Оплата прошла успешно!</b>\n\nВаша подписка активирована до <b>${endDate.toLocaleDateString('ru-RU')}</b>.\n\nСумма: <b>${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}</b>${accessInfo}${discordButton}`;
+      await sendMessage(telegramId, userMessage);
+      console.log('[NOWPayments Webhook] User notification sent to telegram_id=%s', telegramId);
     } catch (e) {
-      console.error('Failed to send Telegram notification:', e);
+      console.error('[NOWPayments Webhook] Failed to send Telegram notification:', e);
     }
+  } else {
+    console.warn('[NOWPayments Webhook] No telegram_id for user_id=%s, skipping user notification', payment.user_id);
+  }
+
+  // Уведомляем администраторов через 2FA бота (до 3 chat ID)
+  try {
+    const userInfo = payment.telegram_username 
+      ? `@${payment.telegram_username}` 
+      : payment.telegram_first_name || `ID: ${payment.telegram_id}`;
+    
+    let accessInfo = '';
+    if (discordGranted) accessInfo += '\n✅ Discord роль выдана';
+    if (notionGranted) accessInfo += '\n✅ Notion доступ открыт';
+    if (googleDriveGranted) accessInfo += '\n✅ Google Drive доступ открыт';
+    if (!discordGranted && !notionGranted && !googleDriveGranted) {
+      accessInfo = '\n⚠️ Доступы не выданы (нет данных пользователя)';
+    }
+
+    const adminMessage = `
+💰 *Новая оплата подписки*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${payment.telegram_id}\`
+*Сумма:* ${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}
+*Период:* ${periodMonths} ${periodMonths === 1 ? 'месяц' : periodMonths < 5 ? 'месяца' : 'месяцев'}
+*Подписка до:* ${endDate.toLocaleDateString('ru-RU')}${accessInfo}
+
+*Payment ID:* \`${ipnData.payment_id}\`
+*Время:* ${new Date().toLocaleString('ru-RU')}
+    `.trim();
+
+    await sendTelegramMessageToAll(adminMessage);
+  } catch (e) {
+    console.error('Failed to send admin notification:', e);
   }
 }
 
@@ -383,14 +500,15 @@ async function handlePaymentFailed(connection: any, payment: any, ipnData: IPNPa
     ]
   );
 
-  if (payment.telegram_id) {
+  const failedTelegramId = payment.telegram_id != null ? Number(payment.telegram_id) : null;
+  if (failedTelegramId) {
     try {
       await sendMessage(
-        payment.telegram_id,
+        failedTelegramId,
         `❌ <b>${errorMessage}</b>\n\nВы можете попробовать оплатить снова через бота.\n\nЕсли возникли проблемы — обратитесь в поддержку.`
       );
     } catch (e) {
-      console.error('Failed to send Telegram notification:', e);
+      console.error('[NOWPayments Webhook] Failed to send failure notification:', e);
     }
   }
 }
@@ -429,14 +547,15 @@ async function handlePaymentRefunded(connection: any, payment: any, ipnData: IPN
     ]
   );
 
-  if (payment.telegram_id) {
+  const refundTelegramId = payment.telegram_id != null ? Number(payment.telegram_id) : null;
+  if (refundTelegramId) {
     try {
       await sendMessage(
-        payment.telegram_id,
+        refundTelegramId,
         `💰 <b>Возврат средств</b>\n\nВаш платёж был возвращён. Подписка отменена.`
       );
     } catch (e) {
-      console.error('Failed to send Telegram notification:', e);
+      console.error('[NOWPayments Webhook] Failed to send refund notification:', e);
     }
   }
 }
@@ -470,15 +589,16 @@ async function handlePartialPayment(connection: any, payment: any, ipnData: IPNP
     ]
   );
 
-  if (payment.telegram_id) {
+  const partialTelegramId = payment.telegram_id != null ? Number(payment.telegram_id) : null;
+  if (partialTelegramId) {
     try {
       const remaining = (ipnData.price_amount - ipnData.actually_paid).toFixed(2);
       await sendMessage(
-        payment.telegram_id,
-        `⚠️ <b>Частичная оплата</b>\n\nПолучено: <b>${ipnData.actually_paid} ${ipnData.pay_currency.toUpperCase()}</b>\nОсталось: <b>${remaining} USD</b>\n\nПожалуйста, доплатите оставшуюся сумму на тот же адрес.`
+        partialTelegramId,
+        `⚠️ <b>Частичная оплата</b>\n\nПолучено: <b>${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}</b>\nОсталось: <b>${remaining} USD</b>\n\nПожалуйста, доплатите оставшуюся сумму на тот же адрес.`
       );
     } catch (e) {
-      console.error('Failed to send Telegram notification:', e);
+      console.error('[NOWPayments Webhook] Failed to send partial payment notification:', e);
     }
   }
 }

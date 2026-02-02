@@ -86,10 +86,15 @@ export default function CreateProjectPage() {
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    console.log(`Select change: ${name} = ${value}`);
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [name]: value
+      };
+      console.log('Updated formData:', updated);
+      return updated;
+    });
   };
 
   // Render Markdown to HTML
@@ -122,6 +127,8 @@ export default function CreateProjectPage() {
     setIsLoading(true);
     setError('');
 
+    console.log('Form submitted with status:', formData.status);
+
     try {
       if (!formData.name.trim()) {
         throw new Error('Название проекта обязательно');
@@ -140,12 +147,17 @@ export default function CreateProjectPage() {
         throw new Error('Выберите категорию проекта');
       }
 
+      // Убеждаемся, что статус валиден
+      const validStatus = ['active', 'draft', 'inactive'].includes(formData.status) 
+        ? formData.status 
+        : 'draft';
+
       const cleanFormData = {
         name: String(formData.name || ''),
         sidebarName: String(formData.sidebarName || ''),
         description: String(formData.description || ''),
         content: String(formData.content || ''),
-        status: typeof formData.status === 'string' ? formData.status : 'draft',
+        status: validStatus,
         category: String(formData.category || ''),
         startDate: String(formData.startDate || ''),
         deadline: String(formData.deadline || ''),
@@ -156,6 +168,7 @@ export default function CreateProjectPage() {
         blocks: [] // Empty blocks for backward compatibility
       };
 
+      console.log('Creating project with status:', cleanFormData.status);
       await createProject(cleanFormData as any);
       
       setSuccess(true);

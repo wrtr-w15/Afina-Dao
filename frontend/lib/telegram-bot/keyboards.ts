@@ -10,15 +10,32 @@ export interface InlineKeyboard {
   inline_keyboard: InlineButton[][];
 }
 
+const BUY_SUBSCRIPTION_LABEL_WITH_SUB = '🔄 Продлить подписку';
+const BUY_SUBSCRIPTION_LABEL_WITHOUT_SUB = '🛒 Купить подписку';
+
+// Подставить подпись «Продлить»/«Купить» для кнопки buy_subscription в клавиатуре из БД
+export function applySubscriptionLabelToWelcomeKeyboard(
+  keyboard: InlineKeyboard | null,
+  hasSubscription: boolean
+): InlineKeyboard | null {
+  if (!keyboard?.inline_keyboard?.length) return keyboard;
+  const label = hasSubscription ? BUY_SUBSCRIPTION_LABEL_WITH_SUB : BUY_SUBSCRIPTION_LABEL_WITHOUT_SUB;
+  const rows = keyboard.inline_keyboard.map((row) =>
+    row.map((btn) =>
+      btn.callback_data === 'buy_subscription' ? { ...btn, text: label } : btn
+    )
+  );
+  return { inline_keyboard: rows };
+}
+
 // Главное меню при /start
 export function getMainMenuKeyboard(hasSubscription: boolean): InlineKeyboard {
   const buttons: InlineButton[][] = [];
   
-  if (hasSubscription) {
-    buttons.push([{ text: '🔄 Продлить подписку', callback_data: 'buy_subscription' }]);
-  } else {
-    buttons.push([{ text: '🛒 Купить подписку', callback_data: 'buy_subscription' }]);
-  }
+  buttons.push([{
+    text: hasSubscription ? BUY_SUBSCRIPTION_LABEL_WITH_SUB : BUY_SUBSCRIPTION_LABEL_WITHOUT_SUB,
+    callback_data: 'buy_subscription'
+  }]);
   
   buttons.push([{ text: '👤 Личный кабинет', callback_data: 'account' }]);
   buttons.push([{ text: '📜 История платежей', callback_data: 'payment_history' }]);
@@ -42,25 +59,36 @@ export function getPlanKeyboard(plans: { id: string; name: string; priceUsdt: nu
   return { inline_keyboard: buttons };
 }
 
-// Клавиатура подтверждения заказа
-export function getConfirmKeyboard(needsDiscord: boolean, needsEmail: boolean, discordOAuthUrl?: string, hasPromocode?: boolean): InlineKeyboard {
+// Клавиатура подтверждения заказа (отдельно Notion и Google Drive)
+export function getConfirmKeyboard(
+  needsDiscord: boolean,
+  needsNotionEmail: boolean,
+  needsGoogleDriveEmail: boolean,
+  discordOAuthUrl?: string,
+  hasPromocode?: boolean
+): InlineKeyboard {
   const buttons: InlineButton[][] = [];
-  
+
   if (needsDiscord && discordOAuthUrl) {
     buttons.push([{ text: '🎮 Подключить Discord', url: discordOAuthUrl }]);
   }
-  
-  if (needsEmail) {
-    buttons.push([{ text: '📧 Указать Email', callback_data: 'enter_email' }]);
+
+  if (needsNotionEmail) {
+    buttons.push([{ text: '📧 Email (Notion)', callback_data: 'enter_email' }]);
   }
-  
-  // Кнопка промокода всегда доступна
+
+  if (needsGoogleDriveEmail) {
+    buttons.push([{ text: '📁 Email (Google Drive)', callback_data: 'enter_google_drive_email' }]);
+  }
+
   buttons.push([{ text: hasPromocode ? '🎫 Изменить промокод' : '🎫 Ввести промокод', callback_data: 'enter_promocode' }]);
-  
-  if (!needsDiscord && !needsEmail) {
+
+  const allFilled = !needsDiscord && !needsNotionEmail && !needsGoogleDriveEmail;
+  if (allFilled) {
     buttons.push([{ text: '✅ Подтвердить и оплатить', callback_data: 'confirm_order' }]);
+    buttons.push([{ text: '🔄 Обновить данные подключений', callback_data: 'refresh_access' }]);
   }
-  
+
   buttons.push([{ text: '◀️ Назад', callback_data: 'buy_subscription' }]);
 
   return { inline_keyboard: buttons };
@@ -125,24 +153,24 @@ export function getAccountKeyboard(options: {
     buttons.push([{ text: '🎮 Подключить Discord', url: options.discordOAuthUrl }]);
   }
   
-  // Email (для Notion)
+  // Email (Notion)
   if (options.emailConnected) {
     buttons.push([
-      { text: '📧 Изменить Email', callback_data: 'change_email' },
+      { text: '🔄 Email (Notion)', callback_data: 'change_email' },
       { text: '🔌 Отключить', callback_data: 'disconnect_email' }
     ]);
   } else {
-    buttons.push([{ text: '📧 Указать Email', callback_data: 'change_email' }]);
+    buttons.push([{ text: '🔄 Email (Notion)', callback_data: 'change_email' }]);
   }
   
-  // Google Drive Email
+  // Email (Google Drive)
   if (options.googleDriveConnected) {
     buttons.push([
-      { text: '📁 Изменить Google Drive Email', callback_data: 'change_google_drive_email' },
+      { text: '🔄 Email (Google Drive)', callback_data: 'change_google_drive_email' },
       { text: '🔌 Отключить', callback_data: 'disconnect_google_drive' }
     ]);
   } else {
-    buttons.push([{ text: '📁 Указать Google Drive Email', callback_data: 'change_google_drive_email' }]);
+    buttons.push([{ text: '🔄 Email (Google Drive)', callback_data: 'change_google_drive_email' }]);
   }
 
   buttons.push([{ text: '🔄 Обновить информацию', callback_data: 'refresh_account_info' }]);

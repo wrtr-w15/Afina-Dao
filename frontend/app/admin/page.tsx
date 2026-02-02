@@ -8,37 +8,39 @@ import {
   FolderOpen, 
   Tag,
   ArrowRight,
-  TrendingUp,
   Activity,
-  Plus,
-  Eye
+  Eye,
+  Users,
+  CreditCard
 } from 'lucide-react';
-import { getProjects } from '@/lib/projects';
 import { getCategories } from '@/lib/categories';
+
+type UsersPerTariff = { tariffId: string; tariffName: string; count: number };
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState({
     totalProjects: 0,
-    activeProjects: 0,
-    draftProjects: 0,
-    categories: 0
+    totalUsers: 0,
+    usersWithPaidSubscription: 0,
+    categories: 0,
+    usersPerTariff: [] as UsersPerTariff[]
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const [projects, categories] = await Promise.all([
-          getProjects(),
+        const [statsRes, categories] = await Promise.all([
+          fetch('/api/admin/stats').then(r => r.ok ? r.json() : { users: {}, projectsTotal: 0, usersPerTariff: [] }),
           getCategories()
         ]);
-        
         setStats({
-          totalProjects: projects.length,
-          activeProjects: projects.filter(p => p.status === 'active').length,
-          draftProjects: projects.filter(p => p.status === 'draft').length,
-          categories: categories.filter(c => c.isActive).length
+          totalProjects: statsRes.projectsTotal ?? 0,
+          totalUsers: statsRes.users?.total ?? 0,
+          usersWithPaidSubscription: statsRes.users?.withPaidSubscription ?? 0,
+          categories: categories.filter(c => c.isActive).length,
+          usersPerTariff: Array.isArray(statsRes.usersPerTariff) ? statsRes.usersPerTariff : []
         });
       } catch (error) {
         console.error('Error loading stats:', error);
@@ -46,7 +48,6 @@ export default function AdminDashboard() {
         setLoading(false);
       }
     };
-    
     loadStats();
   }, []);
 
@@ -54,21 +55,21 @@ export default function AdminDashboard() {
     {
       label: 'Всего проектов',
       value: stats.totalProjects,
-      icon: BarChart3,
+      icon: FolderOpen,
       color: 'from-blue-500 to-cyan-500',
       bgColor: 'bg-blue-500/10'
     },
     {
-      label: 'Активных',
-      value: stats.activeProjects,
-      icon: Activity,
+      label: 'Всего пользователей',
+      value: stats.totalUsers,
+      icon: Users,
       color: 'from-emerald-500 to-teal-500',
       bgColor: 'bg-emerald-500/10'
     },
     {
-      label: 'Черновиков',
-      value: stats.draftProjects,
-      icon: TrendingUp,
+      label: 'С оплаченной подпиской',
+      value: stats.usersWithPaidSubscription,
+      icon: CreditCard,
       color: 'from-amber-500 to-orange-500',
       bgColor: 'bg-amber-500/10'
     },
@@ -144,6 +145,24 @@ export default function AdminDashboard() {
             );
           })}
         </div>
+
+        {/* Пользователи по тарифам */}
+        {stats.usersPerTariff.length > 0 && (
+          <div className="rounded-2xl bg-white/5 border border-white/5 p-6 mb-8">
+            <h2 className="text-xl font-semibold text-white mb-4">Пользователи по тарифам</h2>
+            <div className="space-y-2">
+              {stats.usersPerTariff.map((row) => (
+                <div
+                  key={row.tariffId}
+                  className="flex items-center justify-between py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  <span className="font-medium text-white">{row.tariffName}</span>
+                  <span className="text-gray-400 tabular-nums">{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div className="mb-8">

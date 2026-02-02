@@ -17,13 +17,15 @@ export const dbConfig = {
 // Предотвращает утечки соединений и оптимизирует производительность
 export const pool = mysql.createPool({
   ...dbConfig,
+  // Параметры пула (не передаются в соединения)
   waitForConnections: true,
-  connectionLimit: 50, // Увеличено для большого количества пользователей
-  queueLimit: 0, // Без ограничения очереди
+  connectionLimit: 10, // Ограничиваем, чтобы не превысить max_connections MySQL
+  queueLimit: 20, // Очередь запросов при нехватке соединений
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  acquireTimeout: 60000, // 60 секунд на получение соединения
-  timeout: 60000, // 60 секунд таймаут запросов
+  // acquireTimeout - валидный параметр для пула, но не для соединений
+  // Используем connectTimeout для соединений вместо этого
+  connectTimeout: 60000, // 60 секунд таймаут подключения
 });
 
 // Хелпер для безопасного получения соединения из pool

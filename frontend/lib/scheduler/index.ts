@@ -1,10 +1,11 @@
 // Scheduler для проверки истекших подписок
 
 import { getConnection } from '@/lib/database';
-import { revokeRole, sendDM } from '@/lib/discord-bot';
+import { revokeRole } from '@/lib/discord-bot';
 import { revokeAccess } from '@/lib/notion';
 import { sendMessage } from '@/lib/telegram-bot';
 import { getBotText } from '@/lib/telegram-bot/get-text';
+import { sendExpiredNotificationToUser } from '@/lib/subscription-notifications';
 import crypto from 'crypto';
 
 const DEFAULT_EXPIRING_3_DAYS =
@@ -51,6 +52,7 @@ export async function runScheduledTasks(): Promise<void> {
   try {
     await checkExpiredSubscriptions();
     await checkExpiringSubscriptions();
+    await switchExpiredUsersToActualTariff();
     await cleanupOldBotStates();
   } catch (error) {
     console.error('Error in scheduled tasks:', error);
@@ -91,6 +93,8 @@ async function checkExpiredSubscriptions(): Promise<void> {
   }
 }
 
+const SETTINGS_ROW_ID = 'default';
+
 // Обработка истёкшей подписки
 async function processExpiredSubscription(connection: any, subscription: any): Promise<void> {
   console.log(`Processing expired subscription: ${subscription.id}`);
@@ -129,29 +133,7 @@ async function processExpiredSubscription(connection: any, subscription: any): P
     }
   }
 
-  // Уведомляем пользователя в Telegram
-  if (subscription.telegram_id) {
-    try {
-      await sendMessage(
-        subscription.telegram_id,
-        `❌ <b>Ваша подписка истекла</b>\n\nДоступ к Discord и Notion был отозван.\n\nИспользуйте /start чтобы продлить подписку.`
-      );
-    } catch (error) {
-      console.error(`Failed to notify user ${subscription.telegram_id}:`, error);
-    }
-  }
-
-  // Уведомляем в Discord DM
-  if (subscription.discord_id) {
-    try {
-      await sendDM(
-        subscription.discord_id,
-        '❌ **Ваша подписка Afina DAO истекла**\n\nДоступ к приватным каналам был отозван.\n\nПродлите подписку через Telegram бота.'
-      );
-    } catch (error) {
-      // DM могут быть отключены - это нормально
-    }
-  }
+  await sendExpiredNotificationToUser(connection, subscription);
 
   // Логируем
   await connection.execute(
@@ -253,6 +235,87 @@ async function cleanupOldBotStates(): Promise<void> {
     if (affectedRows > 0) {
       console.log(`Cleaned up ${affectedRows} expired bot states`);
     }
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Через N дней после окончания подписки менять тариф пользователя на актуальный (из subscription_tariff_settings).
+ */
+async function switchExpiredUsersToActualTariff(): Promise<void> {
+  const connection = await getConnection();
+  try {
+    const [settingsRows] = await connection.execute(
+      'SELECT days_after_expiry_switch AS days, actual_tariff_id AS tariff_id, use_all_active_tariffs AS use_all FROM subscription_tariff_settings WHERE id = ?',
+      [SETTINGS_ROW_ID]
+    );
+    if ((settingsRows as any[]).length === 0) return;
+
+    const row = (settingsRows as any[])[0];
+    const days = Number(row.days) || 0;
+    const useAllActive = Boolean(row.use_all);
+    let tariffIds: string[] = [];
+
+    if (useAllActive) {
+      const [allTariffs] = await connection.execute(
+        `SELECT id FROM tariffs WHERE is_active = 1 AND is_archived = 0 AND is_custom = 0 ORDER BY sort_order ASC, created_at DESC`
+      );
+      tariffIds = (allTariffs as any[]).map((r: any) => r.id);
+    } else {
+      let actualTariffId: string | null = row.tariff_id ? String(row.tariff_id) : null;
+      if (actualTariffId === null) {
+        const [defaultTariff] = await connection.execute(
+          `SELECT id FROM tariffs WHERE is_active = 1 AND is_archived = 0 AND is_custom = 0 ORDER BY sort_order ASC, created_at DESC LIMIT 1`
+        );
+        if ((defaultTariff as any[]).length === 0) return;
+        actualTariffId = (defaultTariff as any[])[0].id;
+      }
+      tariffIds = [actualTariffId];
+    }
+
+    if (tariffIds.length === 0) return;
+
+    const [userRows] = await connection.execute(
+      `SELECT DISTINCT s.user_id
+       FROM subscriptions s
+       WHERE s.status = 'expired' AND s.end_date <= DATE_SUB(NOW(), INTERVAL ? DAY)
+         AND NOT EXISTS (SELECT 1 FROM subscriptions s2 WHERE s2.user_id = s.user_id AND s2.status = 'active')`,
+      [days]
+    );
+
+    const userIds = (userRows as any[]).map((r: any) => r.user_id);
+    if (userIds.length === 0) return;
+
+    for (const userId of userIds) {
+      try {
+        await connection.execute('DELETE FROM user_available_tariffs WHERE user_id = ?', [userId]);
+        for (const tariffId of tariffIds) {
+          await connection.execute(
+            'INSERT INTO user_available_tariffs (id, user_id, tariff_id) VALUES (?, ?, ?)',
+            [crypto.randomUUID(), userId, tariffId]
+          );
+        }
+      } catch (e) {
+        console.error(`Failed to switch tariff for user ${userId}:`, e);
+      }
+    }
+
+    if (userIds.length > 0) {
+      const label = useAllActive ? `all ${tariffIds.length} active tariffs` : `tariff ${tariffIds[0]}`;
+      console.log(`Switched ${userIds.length} user(s) to ${label} (after ${days} days expiry)`);
+    }
+  } catch (e) {
+    // Таблица subscription_tariff_settings может отсутствовать
+    try {
+      const [tables] = await connection.execute(
+        `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscription_tariff_settings'`
+      );
+      if ((tables as any[]).length === 0) return;
+    } catch {
+      return;
+    }
+    console.error('Error in switchExpiredUsersToActualTariff:', e);
   } finally {
     connection.release();
   }

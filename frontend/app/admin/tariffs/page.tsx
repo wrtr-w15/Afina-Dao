@@ -80,9 +80,76 @@ export default function TariffsPage() {
     prices: [{ periodMonths: 1, monthlyPrice: 0, isPopular: false }]
   });
 
+  // Настройки: через сколько дней после окончания подписки менять тариф (для всех тарифов)
+  const [tariffSettings, setTariffSettings] = useState<{
+    daysAfterExpirySwitch: number;
+    actualTariffId: string | null;
+    useAllActiveTariffs: boolean;
+  }>({
+    daysAfterExpirySwitch: 5,
+    actualTariffId: null,
+    useAllActiveTariffs: false
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
   useEffect(() => {
     loadTariffs();
   }, [showArchived, showCustom]);
+
+  useEffect(() => {
+    loadTariffSettings();
+  }, []);
+
+  const loadTariffSettings = async () => {
+    setSettingsLoading(true);
+    try {
+      const res = await fetch('/api/admin/tariffs/settings');
+      if (res.ok) {
+        const data = await res.json();
+        setTariffSettings({
+          daysAfterExpirySwitch: data.daysAfterExpirySwitch ?? 5,
+          actualTariffId: data.actualTariffId ?? null,
+          useAllActiveTariffs: Boolean(data.useAllActiveTariffs)
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const saveTariffSettings = async () => {
+    setSettingsSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/admin/tariffs/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          daysAfterExpirySwitch: tariffSettings.daysAfterExpirySwitch,
+          actualTariffId: tariffSettings.actualTariffId,
+          useAllActiveTariffs: tariffSettings.useAllActiveTariffs
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Ошибка сохранения');
+      }
+      const data = await res.json();
+      setTariffSettings({
+        daysAfterExpirySwitch: data.daysAfterExpirySwitch ?? 5,
+        actualTariffId: data.actualTariffId ?? null,
+        useAllActiveTariffs: Boolean(data.useAllActiveTariffs)
+      });
+      setMessage({ type: 'success', text: 'Настройки сохранены' });
+    } catch (e) {
+      setMessage({ type: 'error', text: normalizeErrorMessage(e) });
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const loadTariffs = async () => {
     setLoading(true);
@@ -402,6 +469,90 @@ export default function TariffsPage() {
             <StatCard icon={DollarSign} label="Доход (USDT)" value={stats.totalRevenue.toFixed(2)} color="green" />
           </div>
         )}
+
+        {/* Настройки: после окончания подписки */}
+        <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
+          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Clock className="h-5 w-5 text-amber-400" />
+            После окончания подписки
+          </h2>
+          <p className="text-sm text-gray-400 mb-4">
+            Через указанное количество дней после окончания подписки тариф пользователя в боте снимается и заменяется: либо на один выбранный, либо на все активные тарифы сразу.
+          </p>
+          {settingsLoading ? (
+            <p className="text-gray-500 text-sm">Загрузка настроек...</p>
+          ) : (
+            (() => {
+              const daysValue = Number(tariffSettings.daysAfterExpirySwitch) || 5;
+              const useAllActive = tariffSettings.useAllActiveTariffs === true;
+              const actualTariffValue = tariffSettings.actualTariffId ?? '';
+              return (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Через сколько дней после окончания подписки снимать тариф (для всех)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        value={String(daysValue)}
+                        onChange={(e) => setTariffSettings((s) => ({ ...s, daysAfterExpirySwitch: Math.max(0, Math.min(365, parseInt(e.target.value, 10) || 0)) }))}
+                        className="w-24 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+                    <button
+                      onClick={saveTariffSettings}
+                      disabled={settingsSaving}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+                    >
+                      {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Сохранить
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-2">После срока показывать пользователю</label>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="after_expiry_mode"
+                          checked={!useAllActive}
+                          onChange={() => setTariffSettings((s) => ({ ...s, useAllActiveTariffs: false }))}
+                          className="w-4 h-4 border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span className="text-sm text-gray-300">Один тариф</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="after_expiry_mode"
+                          checked={useAllActive}
+                          onChange={() => setTariffSettings((s) => ({ ...s, useAllActiveTariffs: true }))}
+                          className="w-4 h-4 border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span className="text-sm text-gray-300">Все активные тарифы</span>
+                      </label>
+                    </div>
+                    {!useAllActive && (
+                      <div className="mt-2 min-w-[200px] max-w-xs">
+                        <select
+                          value={actualTariffValue}
+                          onChange={(e) => setTariffSettings((s) => ({ ...s, actualTariffId: e.target.value || null }))}
+                          className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50 text-sm"
+                        >
+                          <option value="">По умолчанию (первый активный)</option>
+                          {tariffs.filter((t) => t.isActive && !t.isArchived).map((t) => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </div>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3">

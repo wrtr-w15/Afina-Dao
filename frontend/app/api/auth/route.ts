@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { getConnection } from '@/lib/database';
-import { sendTelegramMessage } from '@/lib/telegram';
+import { sendTelegramMessageToAll, getTelegramChatIds } from '@/lib/telegram';
 import { encryptSessionData, decryptSessionData, constantTimeCompare } from '@/lib/crypto-utils';
 import { applyRateLimit } from '@/lib/security-middleware';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
 const IS_DEV_MODE = process.env.NODE_ENV === 'development';
 
@@ -216,7 +215,9 @@ export async function GET(request: NextRequest) {
 }
 
 async function sendLoginRequestToTelegram(requestId: string, ip: string, userAgent: string) {
-  if (!TELEGRAM_CHAT_ID) {
+  const chatIds = getTelegramChatIds();
+  
+  if (chatIds.length === 0) {
     console.error('Telegram chat ID not configured');
     return;
   }
@@ -243,7 +244,8 @@ async function sendLoginRequestToTelegram(requestId: string, ip: string, userAge
       ]
     };
 
-    await sendTelegramMessage(TELEGRAM_CHAT_ID, message, replyMarkup);
+    // Отправляем на все указанные chat ID
+    await sendTelegramMessageToAll(message, replyMarkup);
   } catch (error) {
     console.error('Error sending login request to Telegram:', error);
   }

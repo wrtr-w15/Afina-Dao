@@ -121,19 +121,28 @@ export default function StatisticsPage() {
   return (
     <AdminLayout title="Статистика">
       <div className="space-y-8">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white">Статистика</h1>
             <p className="text-gray-400 text-sm">Оплаты, подписки и пользователи</p>
           </div>
-          <button
-            onClick={loadStats}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Обновить
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/admin/statistics/by-month')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/30 hover:text-white transition-all"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Посмотреть статистику по месяцам
+            </button>
+            <button
+              onClick={loadStats}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Обновить
+            </button>
+          </div>
         </div>
 
         {/* Платежи */}

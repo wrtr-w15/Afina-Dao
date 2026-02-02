@@ -13,6 +13,7 @@ import {
   handleEmailInput,
   handleEnterPromocode,
   handlePromocodeInput,
+  handleRefreshAccess,
   handlePaymentHistory,
   handlePaymentHistoryPage,
   handleConfirmOrder,
@@ -40,6 +41,7 @@ import {
   answerCallback
 } from '@/lib/telegram-bot/handlers';
 import { getConnection } from '@/lib/database';
+import { isTelegramBlockedForSubscription } from '@/lib/blocklist';
 
 interface TelegramUpdate {
   update_id: number;
@@ -183,6 +185,8 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
         return await handleRefreshAccountInfo(callbackQuery);
       case 'enter_promocode': 
         return await handleEnterPromocode(callbackQuery);
+      case 'refresh_access':
+        return await handleRefreshAccess(callbackQuery);
       case 'payment_history': 
         return await handlePaymentHistory(callbackQuery);
       case 'help':
@@ -212,6 +216,21 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
 // Главная функция обработки
 export async function processUpdate(update: TelegramUpdate): Promise<void> {
   try {
+    const from = update.message?.from ?? update.callback_query?.from;
+    const chatId = update.message?.chat?.id ?? update.callback_query?.message?.chat?.id;
+
+    if (from?.id && chatId) {
+      const blocked = await isTelegramBlockedForSubscription(from.id, from.username);
+      if (blocked) {
+        const text = '🚫 Доступ с этого аккаунта запрещён. Обратитесь в поддержку.';
+        await sendMessage(chatId, text);
+        if (update.callback_query) {
+          await answerCallback(update.callback_query.id, 'Доступ запрещён', true);
+        }
+        return;
+      }
+    }
+
     if (update.message) {
       console.log(`[Telegram Bot] Processing message from ${update.message.from?.id}: ${update.message.text?.substring(0, 50)}`);
       await handleMessage(update.message);

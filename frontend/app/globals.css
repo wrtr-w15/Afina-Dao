@@ -35,6 +35,25 @@ body {
   background: #4b5563;
 }
 
+/* Animated Gradient Background (для всех страниц кроме главной) */
+.animated-gradient {
+  background: linear-gradient(225deg, #2e1753, #1f1746, #000000, #200147);
+  background-size: 400% 400%;
+  animation: gradient-animation 55s ease-in-out alternate infinite;
+}
+
+@keyframes gradient-animation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 /* Smooth transitions */
 * {
   transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;

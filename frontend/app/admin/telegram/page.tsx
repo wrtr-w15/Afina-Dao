@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { MessageCircle, Save, Loader2, CheckCircle, AlertCircle, ChevronDown, ChevronRight, Plus, Trash2, X, HelpCircle, Download } from 'lucide-react';
+import { useToast } from '@/components/admin/ToastContext';
+import { MessageCircle, Save, Loader2, CheckCircle, AlertCircle, ChevronDown, ChevronRight, Plus, Trash2, X, HelpCircle, Download, Send, Image as ImageIcon } from 'lucide-react';
 
 export type TelegramButton = { text: string; callback_data?: string; url?: string };
 export type TelegramButtons = TelegramButton[][]; // массив рядов, ряд = массив кнопок
@@ -31,34 +32,57 @@ const SECTION_LABELS: Record<string, string> = {
 const SECTION_ORDER = ['start', 'buy', 'account', 'notifications', 'common'];
 
 const TELEGRAM_VARIABLES: { name: string; desc: string }[] = [
+  // Подписка и тарифы
   { name: '{{subscriptionInfo}}', desc: 'Приветствие: строка про подписку до даты (если есть)' },
-  { name: '{{tariffName}}', desc: 'Название тарифа (экран выбора тарифа)' },
+  { name: '{{tariffName}}', desc: 'Название тарифа: на экране выбора тарифа; в личном кабинете — закреплённый за пользователем (из подписки или user_available_tariffs)' },
   { name: '{{planName}}', desc: 'Название выбранного плана (подтверждение заказа)' },
   { name: '{{period}}', desc: 'Период подписки в месяцах' },
   { name: '{{priceUsdt}}', desc: 'Сумма в USDT' },
-  { name: '{{discordLine}}', desc: 'Строка про Discord в подтверждении заказа' },
-  { name: '{{emailLine}}', desc: 'Строка про Email в подтверждении заказа' },
-  { name: '{{paymentInfo}}', desc: 'Текст про оплату (ожидание оплаты)' },
-  { name: '{{paymentUrl}}', desc: 'URL страницы оплаты' },
-  { name: '{{discordOAuthUrl}}', desc: 'URL для авторизации Discord' },
-  { name: '{{discordInviteUrl}}', desc: 'URL приглашения в Discord сервер' },
   { name: '{{endDate}}', desc: 'Дата окончания подписки (формат по локали)' },
   { name: '{{daysLeft}}', desc: 'Дней до конца подписки' },
-  { name: '{{subscriptionStatus}}', desc: 'Статус подписки в личном кабинете' },
-  { name: '{{discordStatus}}', desc: 'Статус Discord в личном кабинете' },
-  { name: '{{emailStatus}}', desc: 'Статус Email в личном кабинете' },
+  { name: '{{subscriptionStatus}}', desc: 'Статус подписки в личном кабинете (✅ Активна до... или ❌ Нет активной подписки)' },
+  
+  // Discord
+  { name: '{{discordLine}}', desc: 'Строка про Discord в подтверждении заказа (✅ username или ❌ Не подключён)' },
+  { name: '{{discordStatus}}', desc: 'Статус Discord в личном кабинете (✅ username или ❌ Не подключён)' },
+  { name: '{{discordOAuthUrl}}', desc: 'URL для авторизации Discord (OAuth)' },
+  { name: '{{discordInviteUrl}}', desc: 'URL приглашения в Discord сервер' },
+  
+  // Email (Notion) и Google Drive
+  { name: '{{emailLine}}', desc: 'Строка про Email в подтверждении заказа (устаревший, используйте {{notionEmailLine}} и {{googleDriveEmailLine}})' },
+  { name: '{{emailStatus}}', desc: 'Личный кабинет: статус Email (Notion) (✅ email или ❌ Не указан)' },
+  { name: '{{notionEmailLine}}', desc: 'Подтверждение заказа: строка Email (Notion) (✅ email или ❌ Не указан)' },
+  { name: '{{googleDriveStatus}}', desc: 'Личный кабинет: статус Google Drive (✅ email или ❌ Не указан)' },
+  { name: '{{googleDriveEmailLine}}', desc: 'Подтверждение заказа: строка Email (Google Drive) (✅ email или ❌ Не указан)' },
+  
+  // Платежи
+  { name: '{{paymentInfo}}', desc: 'Текст про оплату (ожидание оплаты)' },
+  { name: '{{paymentUrl}}', desc: 'URL страницы оплаты' },
   { name: '{{paymentList}}', desc: 'Список платежей в истории (форматированный текст)' },
   { name: '{{paginationInfo}}', desc: 'Информация о пагинации истории платежей' },
+  
+  // Промокоды
+  { name: '{{promocode}}', desc: 'Код промокода (если применён)' },
+  { name: '{{originalPrice}}', desc: 'Исходная цена до применения промокода (в USDT)' },
+  { name: '{{discountPercent}}', desc: 'Процент скидки (если промокод процентный)' },
+  { name: '{{discountAmount}}', desc: 'Фиксированная сумма скидки (если промокод фиксированный)' },
+  { name: '{{discountType}}', desc: 'Тип скидки: percent или fixed' },
+  
+  // Социальные сети и поддержка
+  { name: '{{telegramChannelUrl}}', desc: 'URL Telegram канала (для кнопок соцсетей)' },
+  { name: '{{supportText}}', desc: 'Текст поддержки (например: @kirjeyy или @ascys)' },
+  { name: '{{supportTg1}}', desc: 'Первый Telegram username для поддержки (без @, для URL кнопок)' },
+  { name: '{{supportTg2}}', desc: 'Второй Telegram username для поддержки (без @, для URL кнопок)' },
 ];
 
 export default function AdminTelegramPage() {
+  const toast = useToast();
   const [texts, setTexts] = useState<TelegramText[]>([]);
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [editedButtons, setEditedButtons] = useState<Record<string, TelegramButtons>>({});
   const [editedConditions, setEditedConditions] = useState<Record<string, NotificationCondition>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [showVariablesHint, setShowVariablesHint] = useState(false);
   const [showAddBlock, setShowAddBlock] = useState(false);
@@ -70,6 +94,12 @@ export default function AdminTelegramPage() {
     notificationCondition: null as NotificationCondition
   });
   const [addingBlock, setAddingBlock] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastText, setBroadcastText] = useState('');
+  const [broadcastImageUrl, setBroadcastImageUrl] = useState('');
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [broadcastStats, setBroadcastStats] = useState<{ sent: number; failed: number; total: number } | null>(null);
+  const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'with_subscription' | 'without_subscription'>('all');
 
   useEffect(() => {
     loadTexts();
@@ -97,7 +127,7 @@ export default function AdminTelegramPage() {
       setEditedConditions(initialConditions);
     } catch (e) {
       console.error(e);
-      setMessage({ type: 'error', text: 'Не удалось загрузить тексты' });
+      toast.showError('Не удалось загрузить тексты');
     } finally {
       setIsLoading(false);
     }
@@ -109,7 +139,6 @@ export default function AdminTelegramPage() {
 
   const saveAll = async () => {
     setIsSaving(true);
-    setMessage(null);
     try {
       const updates = texts.map((t) => {
         const u: { key: string; value: string; buttons: TelegramButtons; notification_condition?: NotificationCondition } = {
@@ -128,10 +157,10 @@ export default function AdminTelegramPage() {
         body: JSON.stringify({ updates })
       });
       if (!res.ok) throw new Error('Ошибка сохранения');
-      setMessage({ type: 'success', text: 'Тексты сохранены' });
+      toast.showSuccess('Тексты сохранены');
     } catch (e) {
       console.error(e);
-      setMessage({ type: 'error', text: 'Не удалось сохранить' });
+      toast.showError('Не удалось сохранить');
     } finally {
       setIsSaving(false);
     }
@@ -194,11 +223,10 @@ export default function AdminTelegramPage() {
   const handleAddBlock = async () => {
     const key = newBlock.key.trim();
     if (!key) {
-      setMessage({ type: 'error', text: 'Введите ключ блока' });
+      toast.showError('Введите ключ блока');
       return;
     }
     setAddingBlock(true);
-    setMessage(null);
     try {
       const body: Record<string, unknown> = {
         key,
@@ -217,12 +245,12 @@ export default function AdminTelegramPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Ошибка создания');
-      setMessage({ type: 'success', text: 'Блок добавлен' });
+      toast.showSuccess('Блок добавлен');
       setShowAddBlock(false);
       setNewBlock({ key: '', section: 'common', value: '', description: '', notificationCondition: null });
       loadTexts();
     } catch (e) {
-      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Не удалось добавить блок' });
+      toast.showError(e instanceof Error ? e.message : 'Не удалось добавить блок');
     } finally {
       setAddingBlock(false);
     }
@@ -242,30 +270,6 @@ export default function AdminTelegramPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={async () => {
-                if (!confirm('Инициализировать все тексты и кнопки бота? Существующие будут обновлены.')) return;
-                try {
-                  setIsSaving(true);
-                  const res = await fetch('/api/admin/telegram-texts/init', { method: 'POST' });
-                  const data = await res.json();
-                  if (!res.ok) throw new Error(data.error || 'Ошибка инициализации');
-                  setMessage({ type: 'success', text: data.message || 'Инициализация завершена' });
-                  loadTexts();
-                } catch (e) {
-                  setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Ошибка инициализации' });
-                } finally {
-                  setIsSaving(false);
-                }
-              }}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 disabled:opacity-50 transition"
-              title="Инициализировать все тексты и кнопки"
-            >
-              <Download className="h-4 w-4" />
-              Инициализировать
-            </button>
             <div className="relative">
               <button
                 type="button"
@@ -301,6 +305,14 @@ export default function AdminTelegramPage() {
             </div>
             <button
               type="button"
+              onClick={() => setShowBroadcast(true)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/30 transition"
+            >
+              <Send className="h-4 w-4" />
+              Отправить всем
+            </button>
+            <button
+              type="button"
               onClick={() => setShowAddBlock(true)}
               className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition"
             >
@@ -317,6 +329,235 @@ export default function AdminTelegramPage() {
             </button>
           </div>
         </div>
+
+        {/* Модальное окно массовой рассылки */}
+        {showBroadcast && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60" onClick={() => {
+              setShowBroadcast(false);
+              setBroadcastText('');
+              setBroadcastImageUrl('');
+              setBroadcastStats(null);
+            }} />
+            <div className="relative w-full max-w-2xl rounded-2xl bg-[#1a1a2e] border border-white/10 p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
+                    <Send className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">Массовая рассылка</h2>
+                    <p className="text-xs text-gray-400">Отправить сообщение всем пользователям бота</p>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setShowBroadcast(false);
+                    setBroadcastText('');
+                    setBroadcastImageUrl('');
+                    setBroadcastStats(null);
+                    setBroadcastTarget('all');
+                  }} 
+                  className="p-1 rounded text-gray-400 hover:text-white transition"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Целевая аудитория <span className="text-red-400">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition">
+                      <input
+                        type="radio"
+                        name="broadcastTarget"
+                        value="all"
+                        checked={broadcastTarget === 'all'}
+                        onChange={(e) => setBroadcastTarget(e.target.value as any)}
+                        className="w-4 h-4 text-purple-500 focus:ring-purple-500 focus:ring-2"
+                      />
+                      <div className="flex-1">
+                        <div className="text-white font-medium">Всем пользователям</div>
+                        <div className="text-xs text-gray-400">Отправить сообщение всем пользователям бота</div>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition">
+                      <input
+                        type="radio"
+                        name="broadcastTarget"
+                        value="with_subscription"
+                        checked={broadcastTarget === 'with_subscription'}
+                        onChange={(e) => setBroadcastTarget(e.target.value as any)}
+                        className="w-4 h-4 text-purple-500 focus:ring-purple-500 focus:ring-2"
+                      />
+                      <div className="flex-1">
+                        <div className="text-white font-medium">С активной подпиской</div>
+                        <div className="text-xs text-gray-400">Только пользователям с активной подпиской</div>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition">
+                      <input
+                        type="radio"
+                        name="broadcastTarget"
+                        value="without_subscription"
+                        checked={broadcastTarget === 'without_subscription'}
+                        onChange={(e) => setBroadcastTarget(e.target.value as any)}
+                        className="w-4 h-4 text-purple-500 focus:ring-purple-500 focus:ring-2"
+                      />
+                      <div className="flex-1">
+                        <div className="text-white font-medium">Без активной подписки</div>
+                        <div className="text-xs text-gray-400">Только пользователям без активной подписки</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Текст сообщения <span className="text-red-400">*</span>
+                  </label>
+                  <textarea
+                    value={broadcastText}
+                    onChange={(e) => setBroadcastText(e.target.value)}
+                    placeholder="Введите текст сообщения для всех пользователей..."
+                    rows={6}
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 focus:bg-white/10 transition-all resize-none"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Поддерживается HTML разметка</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <ImageIcon className="h-4 w-4 inline mr-1" />
+                    URL изображения (опционально)
+                  </label>
+                  <input
+                    type="url"
+                    value={broadcastImageUrl}
+                    onChange={(e) => setBroadcastImageUrl(e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 focus:bg-white/10 transition-all"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Публичный URL изображения. Если указан, сообщение будет отправлено как фото с подписью</p>
+                </div>
+
+                {broadcastStats && (
+                  <div className={`p-4 rounded-xl border ${
+                    broadcastStats.failed === 0 
+                      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                      : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {broadcastStats.failed === 0 ? (
+                        <CheckCircle className="h-5 w-5" />
+                      ) : (
+                        <AlertCircle className="h-5 w-5" />
+                      )}
+                      <span className="font-semibold">
+                        {broadcastStats.failed === 0 ? 'Рассылка завершена успешно' : 'Рассылка завершена с ошибками'}
+                      </span>
+                    </div>
+                    <div className="text-sm space-y-1">
+                      <div>Всего пользователей: <strong>{broadcastStats.total}</strong></div>
+                      <div className="text-green-400">Отправлено: <strong>{broadcastStats.sent}</strong></div>
+                      {broadcastStats.failed > 0 && (
+                        <div className="text-red-400">Ошибок: <strong>{broadcastStats.failed}</strong></div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBroadcast(false);
+                      setBroadcastText('');
+                      setBroadcastImageUrl('');
+                      setBroadcastStats(null);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 transition"
+                    disabled={broadcasting}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!broadcastText.trim()) {
+                        toast.showError('Введите текст сообщения');
+                        return;
+                      }
+
+                      const targetLabel = 
+                        broadcastTarget === 'all' ? 'всем пользователям' :
+                        broadcastTarget === 'with_subscription' ? 'пользователям с активной подпиской' :
+                        'пользователям без активной подписки';
+
+                      if (!confirm(`Отправить сообщение ${targetLabel}?\n\nТекст: ${broadcastText.substring(0, 100)}${broadcastText.length > 100 ? '...' : ''}\n\nЭто действие нельзя отменить.`)) {
+                        return;
+                      }
+
+                      setBroadcasting(true);
+                      setBroadcastStats(null);
+                      try {
+                        const res = await fetch('/api/admin/telegram/broadcast', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            text: broadcastText,
+                            imageUrl: broadcastImageUrl.trim() || null,
+                            target: broadcastTarget
+                          })
+                        });
+
+                        const data = await res.json();
+                        
+                        if (!res.ok) {
+                          throw new Error(data.error || 'Ошибка рассылки');
+                        }
+
+                        setBroadcastStats({
+                          sent: data.sent || 0,
+                          failed: data.failed || 0,
+                          total: data.total || 0
+                        });
+
+                        if (data.failed === 0) {
+                          toast.showSuccess(`Сообщение отправлено всем ${data.sent} пользователям`);
+                        } else {
+                          toast.showWarning(`Отправлено ${data.sent} из ${data.total} пользователей. Ошибок: ${data.failed}`);
+                        }
+                      } catch (e) {
+                        toast.showError(e instanceof Error ? e.message : 'Ошибка при выполнении рассылки');
+                      } finally {
+                        setBroadcasting(false);
+                      }
+                    }}
+                    disabled={broadcasting || !broadcastText.trim()}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600 text-white font-medium hover:opacity-90 disabled:opacity-50 transition"
+                  >
+                    {broadcasting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Отправка...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Отправить всем
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showAddBlock && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -421,16 +662,6 @@ export default function AdminTelegramPage() {
           </div>
         )}
 
-        {message && (
-          <div
-            className={`flex items-center gap-2 px-4 py-3 rounded-xl mb-6 ${
-              message.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-            }`}
-          >
-            {message.type === 'success' ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
-            <span>{message.text}</span>
-          </div>
-        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -470,6 +701,9 @@ export default function AdminTelegramPage() {
                                 <span className="ml-2 text-gray-500 font-normal">— {t.description}</span>
                               )}
                             </label>
+                            <p className="text-xs text-gray-400 mb-2">
+                              Полный текст сообщения (шаблон). Все переменные в формате <code className="text-sky-300">{'{{...}}'}</code> (в т.ч. {'{{discordStatus}}'}, {'{{emailStatus}}'}, {'{{googleDriveStatus}}'}, {'{{notionEmailLine}}'}, {'{{googleDriveEmailLine}}'}) подставляются ботом при отправке. Редактируйте весь текст целиком, включая строки с Google Drive.
+                            </p>
                             {section === 'notifications' && (() => {
                               const cond = editedConditions[t.key] ?? t.notificationCondition ?? null;
                               const hasCondition = cond?.type === 'days_before_expiry';
@@ -510,9 +744,9 @@ export default function AdminTelegramPage() {
                             <textarea
                               value={edited[t.key] ?? t.value}
                               onChange={(e) => handleChange(t.key, e.target.value)}
-                              rows={Math.min(12, (edited[t.key] ?? t.value).split('\n').length + 2)}
-                              className="w-full px-4 py-3 rounded-lg bg-black/30 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 outline-none resize-y font-mono text-sm"
-                              placeholder="Текст сообщения (поддерживается HTML: &lt;b&gt;, &lt;code&gt;)"
+                              rows={Math.min(24, Math.max(10, (edited[t.key] ?? t.value).split('\n').length + 3))}
+                              className="w-full min-h-[240px] px-4 py-3 rounded-lg bg-black/30 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 outline-none resize-y font-mono text-sm leading-relaxed"
+                              placeholder="Введите полный текст сообщения. Переменные: {{subscriptionStatus}}, {{discordStatus}}, {{emailStatus}}, {{googleDriveStatus}}, {{notionEmailLine}}, {{googleDriveEmailLine}} и др. HTML: &lt;b&gt;, &lt;code&gt;"
                             />
                           </div>
                           <div>

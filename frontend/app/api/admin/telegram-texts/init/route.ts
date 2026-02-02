@@ -20,7 +20,7 @@ const DEFAULT_TEXTS_AND_BUTTONS = [
 🛠 Техподдержка 24/7
 
 Выберите действие:`,
-    description: 'Приветственное сообщение при /start. Подстановки: {{subscriptionInfo}}',
+    description: 'Приветствие /start. Переменные: {{subscriptionInfo}}',
     sortOrder: 1,
     buttons: [
       [{ text: '🛒 Купить подписку', callback_data: 'buy_subscription' }],
@@ -36,7 +36,7 @@ const DEFAULT_TEXTS_AND_BUTTONS = [
     key: 'selectPlan_header',
     section: 'buy',
     value: `💰 <b>Тариф «{{tariffName}}»</b>\n\n`,
-    description: 'Заголовок экрана выбора тарифа. Подстановки: {{tariffName}}',
+    description: 'Заголовок выбора тарифа. Переменные: {{tariffName}}',
     sortOrder: 10
   },
   {
@@ -56,16 +56,19 @@ const DEFAULT_TEXTS_AND_BUTTONS = [
 💰 Сумма: <b>{{priceUsdt}} USDT</b>
 
 🎮 Discord: {{discordLine}}
-📧 Email: {{emailLine}}
+📧 Email (Notion): {{notionEmailLine}}
+☁️ Email (Google Drive): {{googleDriveEmailLine}}
 
 Всё верно?`,
-    description: 'Подтверждение заказа перед оплатой. Подстановки: {{planName}}, {{period}}, {{priceUsdt}}, {{discordLine}}, {{emailLine}}',
+    description: 'Подтверждение заказа. Переменные: {{planName}}, {{period}}, {{priceUsdt}}, {{discordLine}}, {{notionEmailLine}}, {{googleDriveEmailLine}}',
     sortOrder: 20,
     buttons: [
       [{ text: '🎮 Подключить Discord', url: '{{discordOAuthUrl}}' }],
-      [{ text: '📧 Указать Email', callback_data: 'enter_email' }],
+      [{ text: '📧 Email (Notion)', callback_data: 'enter_email' }],
+      [{ text: '📁 Email (Google Drive)', callback_data: 'enter_google_drive_email' }],
       [{ text: '🎫 Ввести промокод', callback_data: 'enter_promocode' }],
       [{ text: '✅ Подтвердить и оплатить', callback_data: 'confirm_order' }],
+      [{ text: '🔄 Обновить данные подключений', callback_data: 'refresh_access' }],
       [{ text: '◀️ Назад', callback_data: 'buy_subscription' }]
     ]
   },
@@ -79,7 +82,7 @@ const DEFAULT_TEXTS_AND_BUTTONS = [
 {{paymentInfo}}
 
 ⚠️ После оплаты нажмите «Проверить статус» или дождитесь автоматического уведомления.`,
-    description: 'Сообщение ожидания оплаты. Подстановки: {{priceUsdt}}, {{paymentInfo}}',
+    description: 'Ожидание оплаты. Переменные: {{priceUsdt}}, {{paymentInfo}}, {{paymentUrl}} в кнопках',
     sortOrder: 30,
     buttons: [
       [{ text: '💳 Перейти к оплате', url: '{{paymentUrl}}' }],
@@ -96,10 +99,11 @@ const DEFAULT_TEXTS_AND_BUTTONS = [
 
 Что дальше:
 • Роль в Discord выдана автоматически
-• Приглашение в Notion отправлено на вашу почту
+• Приглашение в Notion отправлено на указанный email
+• Доступ к Google Drive предоставлен на указанный email
 
 Если возникнут вопросы — пишите в поддержку.`,
-    description: 'Сообщение об успешной оплате',
+    description: 'Сообщение об успешной оплате (после подстановки {{discordInviteUrl}} в кнопках)',
     sortOrder: 40,
     buttons: [
       [{ text: '🎮 Перейти в Discord', url: '{{discordInviteUrl}}' }],
@@ -152,8 +156,8 @@ Email нужен для приглашения в Notion с гайдами.
     section: 'buy',
     value: `❌ <b>Неверный формат Email</b>
 
-Пожалуйста, введите корректный email адрес:`,
-    description: 'Ошибка неверного формата Email',
+Пожалуйста, введите корректный email адрес (Notion):`,
+    description: 'Ошибка неверного формата Email (Notion)',
     sortOrder: 80
   },
   {
@@ -177,6 +181,8 @@ Email нужен для приглашения в Notion с гайдами.
     section: 'account',
     value: `👤 <b>Личный кабинет</b>
 
+📋 <b>Тариф:</b> {{tariffName}}
+
 📊 <b>Подписка:</b> {{subscriptionStatus}}
 
 🎮 <b>Discord:</b> {{discordStatus}}
@@ -184,13 +190,14 @@ Email нужен для приглашения в Notion с гайдами.
 📁 <b>Google Drive:</b> {{googleDriveStatus}}
 
 Управляйте своими данными:`,
-    description: 'Личный кабинет пользователя. Подстановки: {{subscriptionStatus}}, {{discordStatus}}, {{emailStatus}}, {{googleDriveStatus}}',
+    description: 'Личный кабинет. Переменные: {{tariffName}}, {{subscriptionStatus}}, {{discordStatus}}, {{emailStatus}}, {{googleDriveStatus}}',
     sortOrder: 100,
     buttons: [
       [{ text: '📊 Статус подписки', callback_data: 'check_status' }],
       [{ text: '📜 История платежей', callback_data: 'payment_history' }],
       [{ text: '🎮 Подключить Discord', url: '{{discordOAuthUrl}}' }],
-      [{ text: '📧 Указать Email', callback_data: 'change_email' }],
+      [{ text: '🔄 Email (Notion)', callback_data: 'change_email' }],
+      [{ text: '🔄 Email (Google Drive)', callback_data: 'change_google_drive_email' }],
       [{ text: '🔄 Обновить информацию', callback_data: 'refresh_account_info' }],
       [{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]
     ]
@@ -203,7 +210,7 @@ Email нужен для приглашения в Notion с гайдами.
 ✅ Подписка активна
 📅 Действует до: <b>{{endDate}}</b>
 ⏳ Осталось: <b>{{daysLeft}} дн.</b>`,
-    description: 'Статус активной подписки. Подстановки: {{endDate}}, {{daysLeft}}',
+    description: 'Статус активной подписки. Переменные: {{endDate}}, {{daysLeft}}',
     sortOrder: 110
   },
   {
@@ -229,7 +236,7 @@ Email нужен для приглашения в Notion с гайдами.
 {{paymentList}}
 
 {{paginationInfo}}`,
-    description: 'История платежей пользователя. Подстановки: {{paymentList}}, {{paginationInfo}}',
+    description: 'История платежей. Переменные: {{paymentList}}, {{paginationInfo}}',
     sortOrder: 130,
     buttons: [
       [{ text: '◀️ Назад', callback_data: 'back_to_account' }]
@@ -344,10 +351,11 @@ Email нужен для предоставления доступа к Google Dr
 • Доступ ко всем скриптам Afina DAO
 • Приватный Discord сервер с поддержкой
 • База знаний в Notion с гайдами
+• Доступ к материалам в Google Drive
 
 <b>Поддержка:</b>
 Если у вас возникли вопросы, напишите {{supportText}}`,
-    description: 'Справка по боту. Подстановки: {{supportText}}, {{supportTg1}}, {{supportTg2}}',
+    description: 'Справка. Переменные: {{supportText}}, {{supportTg1}}, {{supportTg2}}',
     sortOrder: 210,
     buttons: [
       [{ text: '💬 Написать в поддержку', url: 'https://t.me/{{supportTg1}}' }],
@@ -385,7 +393,7 @@ Email нужен для предоставления доступа к Google Dr
 ⏳ Осталось: {{daysLeft}} дн.
 
 Продлите подписку, чтобы не потерять доступ. Нажмите /start или кнопку «Продлить подписку».`,
-    description: 'Уведомление в Telegram, когда до конца подписки остаётся 3 дня. Подстановки: {{endDate}}, {{daysLeft}}',
+    description: 'Уведомление за 3 дня до конца подписки. Переменные: {{endDate}}, {{daysLeft}}',
     sortOrder: 10,
     notificationCondition: { type: 'days_before_expiry', days: 3 },
     buttons: [
@@ -402,7 +410,7 @@ Email нужен для предоставления доступа к Google Dr
 ⏳ Осталось: {{daysLeft}} дн.
 
 Срочно продлите подписку, чтобы не потерять доступ ко всем функциям.`,
-    description: 'Уведомление за 1 день до окончания подписки. Подстановки: {{endDate}}, {{daysLeft}}',
+    description: 'Уведомление за 1 день до окончания. Переменные: {{endDate}}, {{daysLeft}}',
     sortOrder: 20,
     notificationCondition: { type: 'days_before_expiry', days: 1 },
     buttons: [
@@ -413,13 +421,14 @@ Email нужен для предоставления доступа к Google Dr
 ];
 
 export async function POST(request: NextRequest) {
+  let connection: Awaited<ReturnType<typeof getConnection>> | null = null;
   try {
     const { checkAdminAuth } = await import('@/lib/security-middleware');
     const authResult = await checkAdminAuth(request);
     if (authResult) return authResult;
 
-    const connection = await getConnection();
-    
+    connection = await getConnection();
+
     // Создаем таблицу если её нет
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS telegram_bot_texts (
@@ -504,5 +513,7 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to initialize', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (connection) connection.release();
   }
 }

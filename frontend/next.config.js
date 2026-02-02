@@ -8,6 +8,14 @@ const withNextIntl = require('next-intl/plugin')(
 const nextConfig = {
   // Явный абсолютный корень для Turbopack (каталог frontend с package.json и node_modules)
   turbopack: { root: path.resolve(__dirname) },
+  // Явные алиасы для резолва @/ (Turbopack/Webpack)
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname),
+    };
+    return config;
+  },
   // Не бандлить discord.js и zlib-sync (native-модули)
   serverExternalPackages: ['discord.js', 'zlib-sync'],
   // Production optimizations

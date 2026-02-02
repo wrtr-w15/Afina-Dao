@@ -44,6 +44,75 @@ export async function GET(request: NextRequest) {
     const [userCount] = await connection.execute(`SELECT COUNT(*) as total FROM users`);
     const usersTotal = (userCount as any[])[0]?.total ?? 0;
 
+    // Пользователи с оплаченной подпиской (уникальные user_id с активной подпиской)
+    const [paidSubCount] = await connection.execute(
+      `SELECT COUNT(DISTINCT user_id) as total FROM subscriptions WHERE status = 'active'`
+    );
+    const usersWithPaidSubscription = Number((paidSubCount as any[])[0]?.total ?? 0);
+
+    // Количество проектов
+    let projectsTotal = 0;
+    try {
+      const [projCount] = await connection.execute(`SELECT COUNT(*) as total FROM projects`);
+      projectsTotal = Number((projCount as any[])[0]?.total ?? 0);
+    } catch {
+      // таблица projects может отсутствовать
+    }
+
+    // Пользователи по каждому тарифу (активные подписки)
+    let usersPerTariff: { tariffId: string; tariffName: string; count: number }[] = [];
+    try {
+      const [tariffRows] = await connection.execute(`
+        SELECT s.tariff_id AS tariff_id, t.name AS tariff_name, COUNT(DISTINCT s.user_id) AS users_count
+        FROM subscriptions s
+        LEFT JOIN tariffs t ON t.id COLLATE utf8mb4_unicode_ci = s.tariff_id COLLATE utf8mb4_unicode_ci
+        WHERE s.status = 'active' AND s.tariff_id IS NOT NULL
+        GROUP BY s.tariff_id, t.name
+        ORDER BY users_count DESC
+      `);
+      usersPerTariff = (tariffRows as any[]).map((r: any) => ({
+        tariffId: r.tariff_id || '',
+        tariffName: r.tariff_name || 'Без названия',
+        count: Number(r.users_count) || 0
+      }));
+    } catch {
+      // таблица tariffs может отсутствовать
+    }
+
+    // Оплаты по месяцам (последние 12 месяцев, только completed)
+    let paymentsByMonth: { month: string; monthLabel: string; count: number; amount: number }[] = [];
+    try {
+      const [byMonthRows] = await connection.execute(`
+        SELECT 
+          YEAR(COALESCE(paid_at, created_at)) AS y,
+          MONTH(COALESCE(paid_at, created_at)) AS m,
+          COUNT(*) AS cnt,
+          COALESCE(SUM(amount), 0) AS amt
+        FROM payments
+        WHERE status = 'completed'
+          AND (paid_at IS NOT NULL OR created_at IS NOT NULL)
+          AND (COALESCE(paid_at, created_at) >= DATE_SUB(NOW(), INTERVAL 12 MONTH))
+        GROUP BY YEAR(COALESCE(paid_at, created_at)), MONTH(COALESCE(paid_at, created_at))
+        ORDER BY y DESC, m DESC
+        LIMIT 12
+      `);
+      const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+      paymentsByMonth = (byMonthRows as any[]).map((r: any) => {
+        const y = Number(r.y);
+        const m = Number(r.m);
+        const monthStr = `${y}-${String(m).padStart(2, '0')}`;
+        const label = `${monthNames[m - 1]} ${y}`;
+        return {
+          month: monthStr,
+          monthLabel: label,
+          count: Number(r.cnt) || 0,
+          amount: parseFloat(r.amt) || 0
+        };
+      });
+    } catch {
+      // таблица payments может отсутствовать
+    }
+
     // Последние платежи (для блока на странице). LIMIT подставляем числом (recentLimit уже 1–50)
     const limitNum = Math.max(1, recentLimit);
     const [recentRows] = await connection.execute(
@@ -89,7 +158,13 @@ export async function GET(request: NextRequest) {
         pending: Number(sRow.pending) || 0,
         cancelled: Number(sRow.cancelled) || 0
       },
-      users: { total: Number(usersTotal) || 0 },
+      users: {
+        total: Number(usersTotal) || 0,
+        withPaidSubscription: usersWithPaidSubscription
+      },
+      projectsTotal,
+      usersPerTariff,
+      paymentsByMonth,
       recentPayments
     });
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/database';
+import { isBlocked, notifyAdminBlockedAttempt } from '@/lib/blocklist';
 
 const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_ME_URL = 'https://discord.com/api/users/@me';
@@ -99,6 +100,12 @@ export async function GET(request: NextRequest) {
   const discordUsername = discordUser.username
     ? `${discordUser.username}${discordUser.discriminator && discordUser.discriminator !== '0' ? `#${discordUser.discriminator}` : ''}`
     : null;
+
+  const discordBlocked = await isBlocked('discord', discordId);
+  if (discordBlocked) {
+    await notifyAdminBlockedAttempt('discord', discordId, telegramId);
+    return NextResponse.redirect(`${errorUrl}?reason=${encodeURIComponent('Подключение этого Discord аккаунта запрещено. Обратитесь в поддержку.')}`);
+  }
 
   const connection = await getConnection();
   try {

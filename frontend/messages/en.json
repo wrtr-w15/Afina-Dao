@@ -2,10 +2,13 @@
   "home": {
     "hero": {
       "title": "Afina DAO",
+      "subtitle": "Official Afina community",
       "description": "Afina DAO is a professional platform for crypto wallet management and automation: we host and support your wallets on our secure servers, run scripted activities in testnets and real projects to earn rewards, and provide 24/7 account monitoring.",
       "learnMore": "Learn More",
       "viewPricing": "View Pricing"
     },
+    "goToCommunity": "Go to community",
+    "viewProjects": "View projects",
     "features": {
       "title": "Our Capabilities",
       "management": {
@@ -103,6 +106,7 @@
     "selectLanguage": "Select language"
   },
   "nav": {
+    "home": "Home",
     "community": "Community",
     "communityShort": "Comm.",
     "projects": "Projects",
@@ -266,6 +270,10 @@
       "item5": {
         "title": "Your Ideas — Our Implementation",
         "description": "Suggest projects for automation. We constantly add new features at the request of participants."
+      },
+      "item6": {
+        "title": "Security via Afina",
+        "description": "Scripts run in the Afina antidetect browser and work only for those who have a subscription to it — this ensures security."
       }
     },
     "pricingSection": {

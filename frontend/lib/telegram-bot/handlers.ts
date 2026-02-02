@@ -1,12 +1,14 @@
 // Обработчики команд и callback для Telegram бота
 
 import { getConnection } from '@/lib/database';
+import { isTelegramBlockedForSubscription, isBlocked, notifyAdminBlockedAttempt } from '@/lib/blocklist';
 import { nowPayments } from '@/lib/nowpayments';
 import { messages } from './messages';
 import { getBotButtons } from './get-text';
 import { generatePaymentHistoryToken } from '@/lib/payment-history-tokens';
 import { 
   getMainMenuKeyboard,
+  applySubscriptionLabelToWelcomeKeyboard,
   getPlanKeyboard, 
   getConfirmKeyboard, 
   getPaymentKeyboard,
@@ -82,6 +84,25 @@ export async function editMessage(chatId: number, messageId: number, text: strin
   } catch (error) {
     console.error(`[Telegram Bot] editMessage exception:`, error);
     throw error;
+  }
+}
+
+// Удаление сообщения
+export async function deleteMessage(chatId: number, messageId: number): Promise<any> {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+    });
+    const result = await response.json();
+    if (!result.ok) {
+      console.warn('[Telegram Bot] deleteMessage error:', result);
+    }
+    return result;
+  } catch (error) {
+    console.warn('[Telegram Bot] deleteMessage exception:', error);
+    return { ok: false };
   }
 }
 
@@ -193,18 +214,31 @@ async function getUserState(telegramId: number): Promise<any> {
   }
 }
 
-// Сохранение состояния (id = telegram_id, чтобы не зависеть от типа колонки id — INT или VARCHAR(36))
+// Сохранение состояния. Поддержка двух схем: id INT AUTO_INCREMENT (не передаём id) или id VARCHAR(36) (передаём UUID).
 async function saveUserState(telegramId: number, state: string, data: any): Promise<void> {
   const connection = await getConnection();
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+  const dataStr = JSON.stringify(data);
   try {
-    const rowId = String(telegramId);
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-    await connection.execute(
-      `INSERT INTO user_bot_states (id, telegram_id, state, data, expires_at) VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE state = VALUES(state), data = VALUES(data), expires_at = VALUES(expires_at), updated_at = CURRENT_TIMESTAMP`,
-      [rowId, telegramId, state, JSON.stringify(data), expiresAt]
-    );
-    // Обновляем кэш
+    // Сначала пробуем без id — для таблицы с id INT AUTO_INCREMENT и UNIQUE(telegram_id)
+    try {
+      await connection.execute(
+        `INSERT INTO user_bot_states (telegram_id, state, data, expires_at) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE state = VALUES(state), data = VALUES(data), expires_at = VALUES(expires_at), updated_at = CURRENT_TIMESTAMP`,
+        [telegramId, state, dataStr, expiresAt]
+      );
+    } catch (err: any) {
+      // Если id обязателен (VARCHAR(36) без default) — вставляем с UUID
+      if (err?.code === 'ER_NO_DEFAULT_FOR_FIELD' && /'id'/.test(String(err?.sqlMessage || ''))) {
+        await connection.execute(
+          `INSERT INTO user_bot_states (id, telegram_id, state, data, expires_at) VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE state = VALUES(state), data = VALUES(data), expires_at = VALUES(expires_at), updated_at = CURRENT_TIMESTAMP`,
+          [crypto.randomUUID(), telegramId, state, dataStr, expiresAt]
+        );
+      } else {
+        throw err;
+      }
+    }
     userStateCache.set(telegramId, { state: { state, data, expires_at: expiresAt }, expires: Date.now() + USER_STATE_CACHE_TTL });
   } finally {
     connection.release();
@@ -223,48 +257,62 @@ async function clearUserState(telegramId: number): Promise<void> {
   }
 }
 
-// Получение тарифов для пользователя: если у пользователя заданы тарифы в user_available_tariffs — показываем их, иначе тариф по умолчанию
-async function getPlans(telegramId?: number): Promise<any[]> {
+// Получение тарифов для пользователя. Если передан tariffIdForRenewal (продление) — показываем только этот тариф.
+async function getPlans(telegramId?: number, tariffIdForRenewal?: string): Promise<any[]> {
   const connection = await getConnection();
   try {
-    let tariffIds: string[] = [];
-    if (telegramId != null) {
-      try {
-        const [userRows] = await connection.execute(
-          'SELECT id FROM users WHERE telegram_id = ?',
-          [telegramId]
-        );
-        if ((userRows as any[]).length > 0) {
-          const userId = (userRows as any[])[0].id;
-          const [uatRows] = await connection.execute(
-            'SELECT tariff_id FROM user_available_tariffs WHERE user_id = ?',
-            [userId]
-          );
-          tariffIds = (uatRows as any[]).map((r: any) => r.tariff_id);
-        }
-      } catch (e) {
-        // Таблица user_available_tariffs может не существовать (миграция не запущена) — используем тариф по умолчанию
+    let tariffsToLoad: { id: string; name: string }[] = [];
+
+    // Продление: показываем только тариф текущей активной подписки
+    if (tariffIdForRenewal) {
+      const [rows] = await connection.execute(
+        'SELECT id, name FROM tariffs WHERE id = ?',
+        [tariffIdForRenewal]
+      );
+      if ((rows as any[]).length > 0) {
+        tariffsToLoad = rows as any[];
       }
     }
 
-    let tariffsToLoad: { id: string; name: string }[] = [];
-    if (tariffIds.length > 0) {
-      // Тарифы, закреплённые за пользователем — показываем даже неактивные (для старых пользователей)
-      const placeholders = tariffIds.map(() => '?').join(',');
-      const [rows] = await connection.execute(
-        `SELECT id, name FROM tariffs WHERE id IN (${placeholders})`,
-        tariffIds
-      );
-      tariffsToLoad = rows as any[];
-    }
+    if (tariffsToLoad.length === 0 && !tariffIdForRenewal) {
+      let tariffIds: string[] = [];
+      if (telegramId != null) {
+        try {
+          const [userRows] = await connection.execute(
+            'SELECT id FROM users WHERE telegram_id = ?',
+            [telegramId]
+          );
+          if ((userRows as any[]).length > 0) {
+            const userId = (userRows as any[])[0].id;
+            const [uatRows] = await connection.execute(
+              'SELECT tariff_id FROM user_available_tariffs WHERE user_id = ?',
+              [userId]
+            );
+            tariffIds = (uatRows as any[]).map((r: any) => r.tariff_id);
+          }
+        } catch (e) {
+          // Таблица user_available_tariffs может не существовать (миграция не запущена) — используем тариф по умолчанию
+        }
+      }
 
-    if (tariffsToLoad.length === 0) {
-      // Тариф по умолчанию (как на сайте)
-      const [defaultRows] = await connection.execute(
-        `SELECT id, name FROM tariffs WHERE is_active = 1 AND is_archived = 0 AND is_custom = 0 ORDER BY sort_order ASC, created_at DESC LIMIT 1`
-      );
-      if ((defaultRows as any[]).length === 0) return [];
-      tariffsToLoad = defaultRows as any[];
+      if (tariffIds.length > 0) {
+        // Тарифы, закреплённые за пользователем — показываем даже неактивные (для старых пользователей)
+        const placeholders = tariffIds.map(() => '?').join(',');
+        const [rows] = await connection.execute(
+          `SELECT id, name FROM tariffs WHERE id IN (${placeholders})`,
+          tariffIds
+        );
+        tariffsToLoad = rows as any[];
+      }
+
+      if (tariffsToLoad.length === 0) {
+        // Тариф по умолчанию (как на сайте)
+        const [defaultRows] = await connection.execute(
+          `SELECT id, name FROM tariffs WHERE is_active = 1 AND is_archived = 0 AND is_custom = 0 ORDER BY sort_order ASC, created_at DESC LIMIT 1`
+        );
+        if ((defaultRows as any[]).length === 0) return [];
+        tariffsToLoad = defaultRows as any[];
+      }
     }
 
     const plans: any[] = [];
@@ -279,8 +327,8 @@ async function getPlans(telegramId?: number): Promise<any[]> {
         const totalUsdt = monthlyPrice * period;
         const periodLabel = period === 1 ? '1 месяц' : period < 5 ? `${period} месяца` : `${period} месяцев`;
         plans.push({
-          id: row.id,
-          tariffId: tariff.id,
+          id: String(row.id),
+          tariffId: String(tariff.id),
           tariffName: tariff.name,
           name: periodLabel,
           period,
@@ -291,6 +339,43 @@ async function getPlans(telegramId?: number): Promise<any[]> {
       }
     }
     return plans;
+  } finally {
+    connection.release();
+  }
+}
+
+// Название тарифа, закреплённого за пользователем (из активной подписки или user_available_tariffs)
+async function getTariffNameForUser(userId: string): Promise<string> {
+  const subscription = await getActiveSubscription(userId);
+  if (subscription?.tariff_id) {
+    const connection = await getConnection();
+    try {
+      const [rows] = await connection.execute(
+        'SELECT name FROM tariffs WHERE id = ?',
+        [subscription.tariff_id]
+      );
+      const name = (rows as any[])[0]?.name;
+      return name ? String(name) : '';
+    } finally {
+      connection.release();
+    }
+  }
+  const connection = await getConnection();
+  try {
+    const [uatRows] = await connection.execute(
+      'SELECT tariff_id FROM user_available_tariffs WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    const tariffId = (uatRows as any[])[0]?.tariff_id;
+    if (!tariffId) return '';
+    const [tRows] = await connection.execute(
+      'SELECT name FROM tariffs WHERE id = ?',
+      [tariffId]
+    );
+    const name = (tRows as any[])[0]?.name;
+    return name ? String(name) : '';
+  } catch {
+    return '';
   } finally {
     connection.release();
   }
@@ -364,7 +449,8 @@ export async function handleStart(message: any): Promise<void> {
     const { id: userId } = await getOrCreateUser(message.from);
     const subscription = await getActiveSubscription(userId);
     const endDate = subscription ? new Date(subscription.end_date).toLocaleDateString('ru-RU') : undefined;
-    const welcomeKeyboard = await getBotButtons('welcome') ?? getMainMenuKeyboard(!!subscription);
+    const welcomeKeyboardFromDb = await getBotButtons('welcome');
+    const welcomeKeyboard = applySubscriptionLabelToWelcomeKeyboard(welcomeKeyboardFromDb, !!subscription) ?? getMainMenuKeyboard(!!subscription);
     await sendMessage(chatId, await messages.welcome(!!subscription, endDate), welcomeKeyboard);
   } catch (error) {
     console.error('Error in handleStart:', error);
@@ -386,6 +472,7 @@ export async function handleAccount(message: any): Promise<void> {
       daysLeft = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     }
     
+    const tariffName = await getTariffNameForUser(userId);
     const discordOAuthUrl = getDiscordOAuthUrl(message.from.id);
     // Всегда используем функцию по умолчанию для account, так как она динамически формирует кнопки на основе состояния пользователя
     // Кнопки из БД статичны и не учитывают текущее состояние подключений
@@ -400,6 +487,7 @@ export async function handleAccount(message: any): Promise<void> {
       hasSubscription: !!subscription,
       endDate,
       daysLeft,
+      tariffName,
       discordConnected: !!user?.discord_id,
       discordUsername: user?.discord_username,
       emailConnected: !!user?.email,
@@ -581,7 +669,7 @@ export async function handleBackToMain(callbackQuery: any): Promise<void> {
     const endDate = subscription ? new Date(subscription.end_date).toLocaleDateString('ru-RU') : undefined;
     const welcomeText = await messages.welcome(!!subscription, endDate);
     const welcomeKeyboardFromDb = await getBotButtons('welcome');
-    const welcomeKeyboard = welcomeKeyboardFromDb ?? getMainMenuKeyboard(!!subscription);
+    const welcomeKeyboard = applySubscriptionLabelToWelcomeKeyboard(welcomeKeyboardFromDb, !!subscription) ?? getMainMenuKeyboard(!!subscription);
     
     console.log(`[Telegram Bot] Welcome text length: ${welcomeText.length}`);
     console.log(`[Telegram Bot] Welcome keyboard from DB:`, JSON.stringify(welcomeKeyboardFromDb));
@@ -618,7 +706,23 @@ export async function handleBuySubscription(callbackQuery: any): Promise<void> {
   const telegramId = callbackQuery.from?.id;
   try {
     await answerCallback(callbackQuery.id);
-    const plans = await getPlans(telegramId);
+    if (telegramId) {
+      const blocked = await isTelegramBlockedForSubscription(telegramId, callbackQuery.from?.username);
+      if (blocked) {
+        await editMessage(chatId, messageId, '❌ Покупка подписки для этого аккаунта запрещена. Обратитесь в поддержку.', getBackToMainKeyboard());
+        return;
+      }
+    }
+    // При продлении показываем только тариф текущей активной подписки
+    let tariffIdForRenewal: string | undefined;
+    if (telegramId) {
+      const { id: userId } = await getOrCreateUser(callbackQuery.from);
+      const subscription = await getActiveSubscription(userId);
+      if (subscription?.tariff_id) {
+        tariffIdForRenewal = String(subscription.tariff_id);
+      }
+    }
+    const plans = await getPlans(telegramId, tariffIdForRenewal);
     if (plans.length === 0) {
       await editMessage(chatId, messageId, '❌ Тарифы временно недоступны.', getBackToMainKeyboard());
       return;
@@ -634,47 +738,71 @@ export async function handleSelectPlan(callbackQuery: any): Promise<void> {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
   const telegramId = callbackQuery.from.id;
+  const rawData = callbackQuery.data || '';
+  const planId = String(rawData.split(':')[1] || '').trim();
+  console.log('[Telegram Bot] handleSelectPlan: telegramId=%s planId=%s rawData=%s', telegramId, planId, rawData);
   try {
     await answerCallback(callbackQuery.id);
-    const planId = callbackQuery.data.split(':')[1];
     const plans = await getPlans(telegramId);
-    const plan = plans.find(p => p.id === planId);
+    console.log('[Telegram Bot] handleSelectPlan: got plans count=%s ids=%s', plans.length, plans.map((p: any) => p.id).join(','));
+    const plan = plans.find((p: any) => String(p.id) === planId);
     if (!plan) {
+      console.warn('[Telegram Bot] handleSelectPlan: plan not found for planId=%s', planId);
       await editMessage(chatId, messageId, '❌ Тариф не найден.', getBackToMainKeyboard());
       return;
     }
     const user = await getUserData(telegramId);
-    // plan.id = tariff_price_id, plan.tariffId = tariff_id (как на сайте)
-    await saveUserState(telegramId, 'selecting_plan', {
-      planId: plan.id,
-      tariffId: plan.tariffId,
+    const stateData = {
+      planId: String(plan.id),
+      tariffId: String(plan.tariffId),
       planName: plan.tariffName ? `${plan.tariffName}, ${plan.name}` : plan.name,
-      period: plan.period,
-      priceUsdt: plan.priceUsdt,
-      discordId: user?.discord_id,
-      discordUsername: user?.discord_username,
-      email: user?.email
-    });
+      period: Number(plan.period),
+      priceUsdt: Number(plan.priceUsdt),
+      discordId: user?.discord_id ?? null,
+      discordUsername: user?.discord_username ?? null,
+      email: user?.email ?? null
+    };
+    await saveUserState(telegramId, 'selecting_plan', stateData);
     const state = await getUserState(telegramId);
     const needsDiscord = !user?.discord_id;
-    const needsEmail = !user?.email;
+    const needsNotionEmail = !user?.email;
+    const needsGoogleDriveEmail = !user?.google_drive_email;
     const hasPromocode = !!state?.data?.promocode;
-    const finalPrice = state?.data?.priceUsdt || plan.priceUsdt;
-    await editMessage(chatId, messageId, await messages.confirmOrder({
+    const finalPrice = Number(state?.data?.priceUsdt ?? plan.priceUsdt);
+    const confirmText = await messages.confirmOrder({
       planName: plan.tariffName ? `${plan.tariffName} — ${plan.name}` : plan.name,
       period: plan.period,
-      priceUsdt: finalPrice,
+      priceUsdt: Number.isFinite(finalPrice) ? finalPrice : plan.priceUsdt,
       discordUsername: user?.discord_username,
       email: user?.email,
+      googleDriveEmail: user?.google_drive_email,
       promocode: state?.data?.promocode,
       originalPrice: state?.data?.originalPrice,
       discountPercent: state?.data?.discountPercent,
       discountType: state?.data?.discountType,
       discountAmount: state?.data?.discountAmount
-    }), getConfirmKeyboard(needsDiscord, needsEmail, getDiscordOAuthUrl(telegramId), hasPromocode));
-  } catch (error) {
-    console.error('Error in handleSelectPlan:', error);
-    await sendMessage(chatId, await messages.error());
+    });
+    const keyboard = getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), hasPromocode);
+    try {
+      await editMessage(chatId, messageId, confirmText, keyboard);
+    } catch (editErr: any) {
+      const desc = String(editErr?.description ?? editErr?.message ?? '');
+      if (editErr?.error_code === 400 || /message.*(not modified|to edit not found|cant be edited)/i.test(desc)) {
+        console.log('[Telegram Bot] handleSelectPlan: editMessage failed, sending new message:', desc);
+        await sendMessage(chatId, confirmText, keyboard);
+      } else {
+        throw editErr;
+      }
+    }
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleSelectPlan:', error?.message ?? error);
+    console.error('[Telegram Bot] handleSelectPlan stack:', error?.stack);
+    if (error?.cause) console.error('[Telegram Bot] handleSelectPlan cause:', error.cause);
+    try {
+      await sendMessage(chatId, await messages.error());
+    } catch (sendErr) {
+      console.error('[Telegram Bot] Failed to send error message:', sendErr);
+    }
   }
 }
 
@@ -702,6 +830,12 @@ export async function handleEmailInput(message: any): Promise<void> {
       await sendMessage(chatId, await messages.invalidEmail(), getEmailInputKeyboard());
       return;
     }
+    const emailBlocked = await isBlocked('email', email);
+    if (emailBlocked) {
+      await sendMessage(chatId, '❌ Подключение этой почты запрещено. Если вы считаете, что это ошибка — обратитесь в поддержку.', getEmailInputKeyboard());
+      await notifyAdminBlockedAttempt('email', email, telegramId, message.from?.username);
+      return;
+    }
     const connection = await getConnection();
     try {
       await connection.execute('UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?', [email, telegramId]);
@@ -714,21 +848,23 @@ export async function handleEmailInput(message: any): Promise<void> {
     if (state?.state === 'entering_email' && state.data?.planId) {
       const user = await getUserData(telegramId);
       const needsDiscord = !user?.discord_id;
+      const needsGoogleDriveEmail = !user?.google_drive_email;
       await saveUserState(telegramId, 'selecting_plan', { ...state.data, email });
       const hasPromocode = !!state.data?.promocode;
       const finalPrice = state.data.priceUsdt || state.data.originalPrice;
-      await sendMessage(chatId,         await messages.confirmOrder({
-          planName: state.data.planName,
-          period: state.data.period,
-          priceUsdt: finalPrice,
-          discordUsername: user?.discord_username,
-          email,
-          promocode: state.data?.promocode,
-          originalPrice: state.data?.originalPrice,
-          discountPercent: state.data?.discountPercent,
-          discountType: state.data?.discountType,
-          discountAmount: state.data?.discountAmount
-        }), getConfirmKeyboard(needsDiscord, false, getDiscordOAuthUrl(telegramId), hasPromocode));
+      await sendMessage(chatId, await messages.confirmOrder({
+        planName: state.data.planName,
+        period: state.data.period,
+        priceUsdt: finalPrice,
+        discordUsername: user?.discord_username,
+        email,
+        googleDriveEmail: user?.google_drive_email,
+        promocode: state.data?.promocode,
+        originalPrice: state.data?.originalPrice,
+        discountPercent: state.data?.discountPercent,
+        discountType: state.data?.discountType,
+        discountAmount: state.data?.discountAmount
+      }), getConfirmKeyboard(needsDiscord, false, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), hasPromocode));
     } else {
       await clearUserState(telegramId);
       await sendMessage(chatId, `✅ Email сохранён: <code>${email}</code>`, getBackToMainKeyboard());
@@ -815,8 +951,9 @@ export async function handlePromocodeInput(message: any): Promise<void> {
       await saveUserState(telegramId, 'selecting_plan', state?.data || {});
       const user = await getUserData(telegramId);
       const needsDiscord = !user?.discord_id;
-      const needsEmail = !user?.email;
-      await sendMessage(chatId, '❌ Ввод промокода отменён.', getConfirmKeyboard(needsDiscord, needsEmail, getDiscordOAuthUrl(telegramId), false));
+      const needsNotionEmail = !user?.email;
+      const needsGoogleDriveEmail = !user?.google_drive_email;
+      await sendMessage(chatId, '❌ Ввод промокода отменён.', getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), false));
       return;
     }
     
@@ -837,7 +974,9 @@ export async function handlePromocodeInput(message: any): Promise<void> {
       body: JSON.stringify({
         code: promocodeText,
         telegramUsername: telegramUsername,
-        amount: state.data.priceUsdt
+        amount: state.data.priceUsdt,
+        periodMonths: state.data.period,
+        tariffId: state.data.tariffId
       })
     });
     
@@ -856,25 +995,38 @@ export async function handlePromocodeInput(message: any): Promise<void> {
       originalPrice: state.data.priceUsdt,
       priceUsdt: checkData.promocode.final_amount,
       discountAmount: checkData.promocode.discount_amount,
-      discountPercent: checkData.promocode.discount_percent
+      discountPercent: checkData.promocode.discount_percent,
+      discountType: checkData.promocode.discount_type === 'fixed' ? 'fixed' : 'percent',
+      extraDays: checkData.promocode.extra_days || 0
     };
     
     await saveUserState(telegramId, 'selecting_plan', updatedState);
     
     const needsDiscord = !user?.discord_id;
-    const needsEmail = !user?.email;
-    
-    const discountText = checkData.promocode.discount_type === 'percent'
-      ? `${checkData.promocode.discount_percent}%`
-      : `${checkData.promocode.discount_amount} USDT`;
-    
-    const promocodeMessage = `✅ Промокод <b>${checkData.promocode.code}</b> применён!\n\n` +
-      `💰 Скидка: ${discountText}\n` +
-      `💵 Было: ${state.data.priceUsdt} USDT\n` +
-      `💵 Стало: ${checkData.promocode.final_amount.toFixed(2)} USDT\n\n` +
-      `Теперь подтвердите заказ.`;
-    
-    await sendMessage(chatId, promocodeMessage, getConfirmKeyboard(needsDiscord, needsEmail, getDiscordOAuthUrl(telegramId), true));
+    const needsNotionEmail = !user?.email;
+    const needsGoogleDriveEmail = !user?.google_drive_email;
+
+    // Вступление + полный блок подтверждения заказа (как на экране подтверждения), включая данные о промокоде и скидке
+    const introText = 'Пожалуйста, проверьте корректность подключений — после оплаты доступы будут выданы на данные, указанные ниже.\n\nЕсли всё верно, можете перейти к оплате.\n\n';
+    const confirmText = await messages.confirmOrder({
+      planName: state.data.planName || 'Подписка',
+      period: state.data.period ?? 1,
+      priceUsdt: checkData.promocode.final_amount,
+      discordUsername: user?.discord_username,
+      email: user?.email,
+      googleDriveEmail: user?.google_drive_email,
+      promocode: checkData.promocode.code,
+      originalPrice: Number(state.data.priceUsdt),
+      discountPercent: checkData.promocode.discount_percent,
+      discountType: checkData.promocode.discount_type === 'fixed' ? 'fixed' : 'percent',
+      discountAmount: checkData.promocode.discount_amount
+    });
+    let fullMessage = introText + confirmText;
+    if (checkData.promocode.extra_days && checkData.promocode.extra_days > 0) {
+      fullMessage += `\n\n🎁 Бонус: +${checkData.promocode.extra_days} дней к подписке`;
+    }
+
+    await sendMessage(chatId, fullMessage, getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), true));
   } catch (error) {
     console.error('Error in handlePromocodeInput:', error);
     await sendMessage(chatId, '❌ Ошибка проверки промокода. Попробуйте позже.', getBackToMainKeyboard());
@@ -889,8 +1041,8 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
     await answerCallback(callbackQuery.id);
     const state = await getUserState(telegramId);
     const user = await getUserData(telegramId);
-    if (!user?.discord_id || !user?.email) {
-      await answerCallback(callbackQuery.id, '⚠️ Заполните Discord и Email');
+    if (!user?.discord_id || !user?.email || !user?.google_drive_email) {
+      await answerCallback(callbackQuery.id, '⚠️ Заполните Discord, Email (Notion) и Email (Google Drive)');
       return;
     }
     if (!state?.data?.planId) {
@@ -947,6 +1099,7 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
           cancel_url: `${baseUrl}/payment/cancel?subscription=${subscriptionId}`,
         });
         invoiceUrl = invoice.invoice_url;
+        const orderId = `SUB-${subscriptionId.slice(0, 8)}`;
         await connection.execute(
           `UPDATE payments SET external_id = ?, provider_data = ?, updated_at = NOW() WHERE id = ?`,
           [
@@ -954,6 +1107,7 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
             JSON.stringify({
               invoice_id: invoice.id,
               invoice_url: invoice.invoice_url,
+              order_id: orderId,
               pay_currency: payCurrency,
               created_at: invoice.created_at,
             }),
@@ -989,6 +1143,106 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
   }
 }
 
+export async function handleRefreshAccess(callbackQuery: any): Promise<void> {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const telegramId = callbackQuery.from.id;
+  try {
+    const state = await getUserState(telegramId);
+    // На экране подтверждения заказа — обновляем отображаемые данные подключений (Discord, Email), а не выдаём доступы
+    if (state?.state === 'selecting_plan' && state?.data?.planId) {
+      await answerCallback(callbackQuery.id, '🔄 Обновляю данные подключений...');
+      await deleteMessage(chatId, messageId);
+      userDataCache.delete(telegramId);
+      const user = await getUserData(telegramId);
+      const needsDiscord = !user?.discord_id;
+      const needsNotionEmail = !user?.email;
+      const needsGoogleDriveEmail = !user?.google_drive_email;
+      const hasPromocode = !!state.data?.promocode;
+      const finalPrice = Number(state.data?.priceUsdt ?? 0);
+      const confirmText = await messages.confirmOrder({
+        planName: state.data.planName || 'Подписка',
+        period: state.data.period ?? 1,
+        priceUsdt: Number.isFinite(finalPrice) ? finalPrice : 0,
+        discordUsername: user?.discord_username,
+        email: user?.email,
+        googleDriveEmail: user?.google_drive_email,
+        promocode: state.data.promocode,
+        originalPrice: state.data.originalPrice,
+        discountPercent: state.data.discountPercent,
+        discountType: state.data.discountType,
+        discountAmount: state.data.discountAmount
+      });
+      const keyboard = getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), hasPromocode);
+      await sendMessage(chatId, confirmText, keyboard);
+      return;
+    }
+    // Уже купил подписку — обновляем выданные доступы (Notion, Google Drive, Discord)
+    await answerCallback(callbackQuery.id, '🔄 Обновляю доступ...');
+    const { id: userId } = await getOrCreateUser(callbackQuery.from);
+    const subscription = await getActiveSubscription(userId);
+    if (!subscription) {
+      await sendMessage(chatId, '⚠️ У вас нет активной подписки. Обновление доступа доступно после оплаты.', getBackToMainKeyboard());
+      return;
+    }
+    const user = await getUserData(telegramId);
+    const connection = await getConnection();
+    const results: { notion?: boolean; googleDrive?: boolean } = {};
+    try {
+      if (user?.email) {
+        try {
+          const { grantAccess } = await import('@/lib/notion');
+          const result = await grantAccess(user.email, userId, subscription.id);
+          results.notion = result.success;
+          if (result.success) {
+            await connection.execute(
+              `UPDATE subscriptions SET notion_access_granted = TRUE WHERE id = ?`,
+              [subscription.id]
+            );
+          }
+        } catch (e: any) {
+          results.notion = false;
+          console.error('[Telegram Bot] Notion grant error:', e);
+        }
+      }
+      if (user?.google_drive_email) {
+        try {
+          const { grantAccess } = await import('@/lib/google-drive');
+          const result = await grantAccess(user.google_drive_email, userId, subscription.id);
+          results.googleDrive = result.success;
+          if (result.success) {
+            try {
+              await connection.execute(
+                `UPDATE subscriptions SET google_drive_access_granted = TRUE WHERE id = ?`,
+                [subscription.id]
+              );
+            } catch (e: any) {
+              if (e?.code === 'ER_BAD_FIELD_ERROR') {
+                await connection.execute('ALTER TABLE subscriptions ADD COLUMN google_drive_access_granted BOOLEAN DEFAULT FALSE');
+                await connection.execute('UPDATE subscriptions SET google_drive_access_granted = TRUE WHERE id = ?', [subscription.id]);
+              }
+            }
+          }
+        } catch (e: any) {
+          results.googleDrive = false;
+          console.error('[Telegram Bot] Google Drive grant error:', e);
+        }
+      }
+    } finally {
+      connection.release();
+    }
+    const lines: string[] = ['✅ Доступ обновлён.'];
+    if (results.notion === true) lines.push('• Notion: приглашение отправлено на почту');
+    else if (user?.email && results.notion === false) lines.push('• Notion: ошибка (проверьте почту или обратитесь в поддержку)');
+    if (results.googleDrive === true) lines.push('• Google Drive: доступ выдан');
+    else if (user?.google_drive_email && results.googleDrive === false) lines.push('• Google Drive: ошибка (обратитесь в поддержку)');
+    await sendMessage(chatId, lines.join('\n'), getBackToMainKeyboard());
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleRefreshAccess:', error);
+    await sendMessage(chatId, await messages.error()).catch(() => {});
+  }
+}
+
 export async function handleProcessPayment(callbackQuery: any): Promise<void> {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
@@ -1008,7 +1262,20 @@ export async function handleProcessPayment(callbackQuery: any): Promise<void> {
       await connection.execute(`UPDATE subscriptions SET status = 'active', start_date = ?, end_date = ? WHERE id = ?`, [now, endDate, state.data.subscriptionId]);
       await connection.execute(`UPDATE payments SET status = 'completed', paid_at = CURRENT_TIMESTAMP WHERE id = ?`, [state.data.paymentId]);
       await clearUserState(telegramId);
-      await editMessage(chatId, messageId, await messages.paymentSuccess(), getSuccessKeyboard(process.env.DISCORD_INVITE_URL));
+      let communityUrl = (process.env.DISCORD_INVITE_URL || '').trim();
+      try {
+        const [linkRows] = await connection.execute(
+          `SELECT \`key\`, value FROM site_contact_links WHERE \`key\` IN ('community_button_url', 'discord_invite_url')`
+        );
+        const linkMap: Record<string, string> = {};
+        for (const row of linkRows as { key: string; value: string | null }[]) {
+          linkMap[row.key] = (row.value ?? '').trim();
+        }
+        communityUrl = (linkMap.community_button_url || linkMap.discord_invite_url || process.env.DISCORD_INVITE_URL || '').trim();
+      } catch {
+        // уже есть fallback выше
+      }
+      await editMessage(chatId, messageId, await messages.paymentSuccess(), getSuccessKeyboard(communityUrl));
     } finally {
       connection.release();
     }
@@ -1254,11 +1521,25 @@ export async function handleConfirmDisconnectDiscord(callbackQuery: any): Promis
     try {
       const user = await getUserData(telegramId);
       if (user?.discord_id) {
-        console.log(`Removing Discord role for user ${user.discord_id}`);
-        // TODO: Снять роль в Discord
+        try {
+          const { revokeRole } = await import('@/lib/discord-bot');
+          const result = await revokeRole(user.discord_id);
+          if (result.success) {
+            console.log(`[Telegram Bot] Discord role revoked for ${user.discord_id}`);
+          } else {
+            console.error('[Telegram Bot] Failed to revoke Discord role:', result.error);
+          }
+        } catch (e) {
+          console.error('[Telegram Bot] Error revoking Discord role:', e);
+        }
+      }
+      if (user?.id) {
+        await connection.execute(
+          'UPDATE subscriptions SET discord_role_granted = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+          [user.id]
+        );
       }
       await connection.execute('UPDATE users SET discord_id = NULL, discord_username = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?', [telegramId]);
-      // Инвалидируем кэш данных пользователя
       userDataCache.delete(telegramId);
     } finally {
       connection.release();
@@ -1266,7 +1547,11 @@ export async function handleConfirmDisconnectDiscord(callbackQuery: any): Promis
     await sendMessage(chatId, await messages.discordDisconnected(), getBackToMainKeyboard());
   } catch (error) {
     console.error('Error in handleConfirmDisconnectDiscord:', error);
-    await sendMessage(chatId, await messages.error());
+    try {
+      await sendMessage(chatId, await messages.error());
+    } catch (sendError) {
+      console.error('Error sending error message:', sendError);
+    }
   }
 }
 
@@ -1318,7 +1603,12 @@ export async function handleEnterGoogleDriveEmail(callbackQuery: any): Promise<v
     const answerResult = await answerCallback(callbackQuery.id);
     console.log(`[Telegram Bot] Callback answered:`, answerResult);
     
-    await saveUserState(telegramId, 'entering_google_drive_email', { returnTo: 'account' });
+    const state = await getUserState(telegramId);
+    const isFromConfirmOrder = state?.state === 'selecting_plan' && state?.data?.planId;
+    await saveUserState(telegramId, 'entering_google_drive_email', {
+      ...(state?.data || {}),
+      returnTo: isFromConfirmOrder ? 'confirm_order' : 'account'
+    });
     
     const googleDriveEmailText = await messages.askGoogleDriveEmail();
     console.log(`[Telegram Bot] Google Drive email text:`, googleDriveEmailText);
@@ -1429,8 +1719,33 @@ export async function handleGoogleDriveEmailInput(message: any): Promise<void> {
       connection.release();
     }
     
-    await clearUserState(telegramId);
-    await sendMessage(chatId, `✅ Google Drive Email сохранён: <code>${email}</code>`, getBackToMainKeyboard());
+    const stateAfter = await getUserState(telegramId);
+    if (stateAfter?.data?.returnTo === 'confirm_order' && stateAfter?.data?.planId) {
+      await saveUserState(telegramId, 'selecting_plan', { ...stateAfter.data, returnTo: undefined });
+      const userAfter = await getUserData(telegramId);
+      const needsDiscord = !userAfter?.discord_id;
+      const needsNotionEmail = !userAfter?.email;
+      const hasPromocode = !!stateAfter.data?.promocode;
+      const finalPrice = Number(stateAfter.data?.priceUsdt ?? stateAfter.data?.originalPrice);
+      const confirmText = await messages.confirmOrder({
+        planName: stateAfter.data.planName,
+        period: stateAfter.data.period,
+        priceUsdt: Number.isFinite(finalPrice) ? finalPrice : 0,
+        discordUsername: userAfter?.discord_username,
+        email: userAfter?.email,
+        googleDriveEmail: email,
+        promocode: stateAfter.data?.promocode,
+        originalPrice: stateAfter.data?.originalPrice,
+        discountPercent: stateAfter.data?.discountPercent,
+        discountType: stateAfter.data?.discountType,
+        discountAmount: stateAfter.data?.discountAmount
+      });
+      const keyboard = getConfirmKeyboard(needsDiscord, needsNotionEmail, false, getDiscordOAuthUrl(telegramId), hasPromocode);
+      await sendMessage(chatId, confirmText, keyboard);
+    } else {
+      await clearUserState(telegramId);
+      await sendMessage(chatId, `✅ Google Drive Email сохранён: <code>${email}</code>`, getBackToMainKeyboard());
+    }
   } catch (error) {
     console.error('[Telegram Bot] Error in handleGoogleDriveEmailInput:', error);
     await sendMessage(chatId, await messages.error());
@@ -1596,32 +1911,25 @@ export async function handleBackToAccount(callbackQuery: any): Promise<void> {
       discordOAuthUrl
     });
     
+    const tariffName = await getTariffNameForUser(userId);
+    const accountPayload = {
+      hasSubscription: !!subscription,
+      endDate,
+      daysLeft,
+      tariffName,
+      discordConnected: !!user?.discord_id,
+      discordUsername: user?.discord_username,
+      emailConnected: !!user?.email,
+      email: user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
+      googleDriveEmail: user?.google_drive_email
+    };
     try {
-      await editMessage(chatId, messageId, await messages.account({
-        hasSubscription: !!subscription,
-        endDate,
-        daysLeft,
-        discordConnected: !!user?.discord_id,
-        discordUsername: user?.discord_username,
-        emailConnected: !!user?.email,
-        email: user?.email,
-        googleDriveConnected: !!user?.google_drive_email,
-        googleDriveEmail: user?.google_drive_email
-      }), accountKeyboard);
+      await editMessage(chatId, messageId, await messages.account(accountPayload), accountKeyboard);
     } catch (editError: any) {
       // Если не удалось отредактировать, отправляем новое сообщение
       if (editError?.error_code === 400 || editError?.description?.includes('message')) {
-        await sendMessage(chatId, await messages.account({
-          hasSubscription: !!subscription,
-          endDate,
-          daysLeft,
-          discordConnected: !!user?.discord_id,
-          discordUsername: user?.discord_username,
-          emailConnected: !!user?.email,
-          email: user?.email,
-          googleDriveConnected: !!user?.google_drive_email,
-          googleDriveEmail: user?.google_drive_email
-        }), accountKeyboard);
+        await sendMessage(chatId, await messages.account(accountPayload), accountKeyboard);
       } else {
         throw editError;
       }
@@ -1649,14 +1957,18 @@ export async function handleRefreshAccountInfo(callbackQuery: any): Promise<void
       daysLeft = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     }
 
+    const tariffName = await getTariffNameForUser(userId);
     const accountText = await messages.account({
       hasSubscription: !!subscription,
       endDate,
       daysLeft,
+      tariffName,
       discordConnected: !!user?.discord_id,
       discordUsername: user?.discord_username,
       emailConnected: !!user?.email,
-      email: user?.email
+      email: user?.email,
+      googleDriveConnected: !!user?.google_drive_email,
+      googleDriveEmail: user?.google_drive_email
     });
 
     await editMessage(

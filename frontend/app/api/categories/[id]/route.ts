@@ -21,6 +21,8 @@ async function ensureColumns(connection: any): Promise<void> {
     await safeAddColumn(connection, 'sort_order INT DEFAULT 0');
     await safeAddColumn(connection, 'color VARCHAR(20) DEFAULT \'#3B82F6\'');
     await safeAddColumn(connection, 'icon VARCHAR(50) DEFAULT NULL');
+    await safeAddColumn(connection, 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+    await safeAddColumn(connection, 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
   } catch (error) {
     console.error('Error ensuring columns:', error);
   }
@@ -109,6 +111,7 @@ export async function PUT(
     }
 
     // Обновляем категорию
+    // Преобразуем undefined в null для MySQL2
     await connection.execute(`
       UPDATE categories 
       SET name = COALESCE(?, name),
@@ -120,12 +123,12 @@ export async function PUT(
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
-      data.name,
-      data.description,
-      data.color,
-      data.icon,
+      data.name ?? null,
+      data.description ?? null,
+      data.color ?? null,
+      data.icon ?? null,
       data.isActive !== undefined ? (data.isActive ? 1 : 0) : null,
-      data.sortOrder,
+      data.sortOrder ?? null,
       id
     ]);
 

@@ -19,7 +19,8 @@ import {
   BarChart3,
   Link2,
   Image,
-  Ticket
+  Ticket,
+  ShieldBan
 } from 'lucide-react';
 import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
 
@@ -118,7 +119,7 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
     },
     {
       id: 'contact-links',
-      label: 'Ссылки контактов',
+      label: 'Ссылки',
       icon: Link2,
       path: '/admin/contact-links',
       color: 'from-cyan-500 to-sky-500'
@@ -136,6 +137,13 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
       icon: Ticket,
       path: '/admin/promocodes',
       color: 'from-orange-500 to-red-500'
+    },
+    {
+      id: 'blocklist',
+      label: 'Блокировка',
+      icon: ShieldBan,
+      path: '/admin/blocklist',
+      color: 'from-amber-500 to-orange-500'
     },
     {
       id: 'settings',

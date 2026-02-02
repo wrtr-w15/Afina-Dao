@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { useToast } from '@/components/admin/ToastContext';
 import {
   ArrowLeft,
   Save,
@@ -50,6 +51,7 @@ export default function UserEditPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const toast = useToast();
 
   const [user, setUser] = useState<UserDetail | null>(null);
   const [tariffs, setTariffs] = useState<Tariff[]>([]);
@@ -57,9 +59,6 @@ export default function UserEditPage() {
   const [saving, setSaving] = useState(false);
   const [savingSub, setSavingSub] = useState<string | null>(null);
   const [refreshingAccesses, setRefreshingAccesses] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedTariffId, setSelectedTariffId] = useState<string | null>(null);
   const [formUser, setFormUser] = useState<UserForm>({
     telegramId: '',
@@ -84,24 +83,26 @@ export default function UserEditPage() {
       setLoading(true);
       const res = await fetch(`/api/users/${id}`);
       if (!res.ok) {
-        if (res.status === 404) setError('Пользователь не найден');
+        if (res.status === 404) {
+          toast.showError('Пользователь не найден');
+        }
         return;
       }
       const data = await res.json();
       setUser(data);
       setSelectedTariffId((data.availableTariffIds && data.availableTariffIds[0]) ? data.availableTariffIds[0] : null);
-        setFormUser({
-          telegramId: data.telegramId != null ? String(data.telegramId) : '',
-          telegramUsername: data.telegramUsername || '',
-          telegramFirstName: data.telegramFirstName || '',
-          telegramLastName: data.telegramLastName || '',
-          discordId: data.discordId || '',
-          discordUsername: data.discordUsername || '',
-          email: data.email || '',
-          googleDriveEmail: data.googleDriveEmail || ''
-        });
+      setFormUser({
+        telegramId: data.telegramId != null ? String(data.telegramId) : '',
+        telegramUsername: data.telegramUsername || '',
+        telegramFirstName: data.telegramFirstName || '',
+        telegramLastName: data.telegramLastName || '',
+        discordId: data.discordId || '',
+        discordUsername: data.discordUsername || '',
+        email: data.email || '',
+        googleDriveEmail: data.googleDriveEmail || ''
+      });
     } catch (e) {
-      setError('Ошибка загрузки');
+      toast.showError('Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -122,8 +123,6 @@ export default function UserEditPage() {
 
   const handleSaveUser = async () => {
     setSaving(true);
-    setError(null);
-    setSuccessMsg(null);
     try {
       const res = await fetch(`/api/users/${id}`, {
         method: 'PUT',
@@ -141,10 +140,10 @@ export default function UserEditPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Ошибка сохранения');
+        toast.showError(data.error || 'Ошибка сохранения');
         return;
       }
-      setSuccessMsg('Данные пользователя сохранены.');
+      toast.showSuccess('Данные пользователя сохранены');
       setUser(prev => prev ? {
         ...prev,
         telegramId: formUser.telegramId ? Number(formUser.telegramId) : undefined,
@@ -157,7 +156,7 @@ export default function UserEditPage() {
         googleDriveEmail: formUser.googleDriveEmail || undefined
       } : null);
     } catch (e) {
-      setError('Ошибка сохранения');
+      toast.showError('Ошибка сохранения');
     } finally {
       setSaving(false);
     }
@@ -166,8 +165,6 @@ export default function UserEditPage() {
   const handleSaveTariffs = async () => {
     if (!user) return;
     setSaving(true);
-    setError(null);
-    setSuccessMsg(null);
     try {
       const res = await fetch(`/api/users/${id}`, {
         method: 'PUT',
@@ -176,13 +173,13 @@ export default function UserEditPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Ошибка сохранения');
+        toast.showError(data.error || 'Ошибка сохранения');
         return;
       }
-      setSuccessMsg('Тариф для бота сохранён.');
+      toast.showSuccess('Тариф для бота сохранён');
       setUser(prev => prev ? { ...prev, availableTariffIds: selectedTariffId ? [selectedTariffId] : [] } : null);
     } catch (e) {
-      setError('Ошибка сохранения');
+      toast.showError('Ошибка сохранения');
     } finally {
       setSaving(false);
     }
@@ -201,8 +198,6 @@ export default function UserEditPage() {
   const handleSaveSubscription = async () => {
     if (!editingSubId) return;
     setSavingSub(editingSubId);
-    setError(null);
-    setSuccessMsg(null);
     try {
       const res = await fetch(`/api/subscriptions/${editingSubId}`, {
         method: 'PUT',
@@ -216,14 +211,14 @@ export default function UserEditPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Ошибка сохранения подписки');
+        toast.showError(data.error || 'Ошибка сохранения подписки');
         return;
       }
-      setSuccessMsg('Подписка обновлена.');
+      toast.showSuccess('Подписка обновлена');
       setEditingSubId(null);
       loadUser();
     } catch (e) {
-      setError('Ошибка сохранения подписки');
+      toast.showError('Ошибка сохранения подписки');
     } finally {
       setSavingSub(null);
     }
@@ -231,8 +226,6 @@ export default function UserEditPage() {
 
   const handleRefreshAccesses = async () => {
     setRefreshingAccesses(true);
-    setError(null);
-    setSuccessMsg(null);
     try {
       const res = await fetch(`/api/users/${id}/refresh-accesses`, {
         method: 'POST',
@@ -241,7 +234,7 @@ export default function UserEditPage() {
       const data = await res.json();
       
       if (!res.ok) {
-        setError(data.error || data.message || 'Не удалось обновить доступы');
+        toast.showError(data.error || data.message || 'Не удалось обновить доступы');
         return;
       }
 
@@ -252,9 +245,9 @@ export default function UserEditPage() {
         if (data.results?.googleDrive?.success) granted.push('Google Drive');
         
         if (granted.length > 0) {
-          setSuccessMsg(`Доступы успешно обновлены: ${granted.join(', ')}`);
+          toast.showSuccess(`Доступы успешно обновлены: ${granted.join(', ')}`);
         } else {
-          setSuccessMsg('Доступы обновлены (нет данных для выдачи доступа)');
+          toast.showInfo('Доступы обновлены (нет данных для выдачи доступа)');
         }
         // Перезагружаем данные пользователя
         loadUser();
@@ -270,13 +263,13 @@ export default function UserEditPage() {
           errors.push(`Google Drive: ${data.results.googleDrive.error || 'ошибка'}`);
         }
         if (errors.length > 0) {
-          setError(`Доступы обновлены с ошибками: ${errors.join(', ')}`);
+          toast.showError(`Доступы обновлены с ошибками: ${errors.join(', ')}`);
         } else {
-          setSuccessMsg('Доступы обновлены');
+          toast.showSuccess('Доступы обновлены');
         }
       }
     } catch (e) {
-      setError('Ошибка при обновлении доступов');
+      toast.showError('Ошибка при обновлении доступов');
       console.error('Error refreshing accesses:', e);
     } finally {
       setRefreshingAccesses(false);
@@ -316,23 +309,7 @@ export default function UserEditPage() {
           <h1 className="text-2xl font-bold text-white">Редактирование пользователя</h1>
         </div>
 
-        {error && (
-          <div className="p-4 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
-            {error}
-          </div>
-        )}
 
-        {successMsg && (
-          <div className="p-4 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 text-sm">
-            {successMsg}
-          </div>
-        )}
-        {successMsg && (
-          <div className="p-4 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2">
-            <CheckCircle className="h-4 w-4 shrink-0" />
-            {successMsg}
-          </div>
-        )}
 
         {/* Редактирование данных пользователя */}
         <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">

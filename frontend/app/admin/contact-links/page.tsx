@@ -7,6 +7,7 @@ import { Link2, Save, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 interface ContactLinks {
   telegramChannelUrl: string;
   discordInviteUrl: string;
+  communityButtonUrl: string;
   supportTg1: string;
   supportTg2: string;
 }
@@ -15,6 +16,7 @@ export default function AdminContactLinksPage() {
   const [links, setLinks] = useState<ContactLinks>({
     telegramChannelUrl: '',
     discordInviteUrl: '',
+    communityButtonUrl: '',
     supportTg1: 'kirjeyy',
     supportTg2: 'ascys',
   });
@@ -35,6 +37,7 @@ export default function AdminContactLinksPage() {
       setLinks({
         telegramChannelUrl: data.telegramChannelUrl ?? '',
         discordInviteUrl: data.discordInviteUrl ?? '',
+        communityButtonUrl: data.communityButtonUrl ?? '',
         supportTg1: data.supportTg1 ?? '',
         supportTg2: data.supportTg2 ?? '',
       });
@@ -56,6 +59,7 @@ export default function AdminContactLinksPage() {
         body: JSON.stringify({
           telegramChannelUrl: links.telegramChannelUrl,
           discordInviteUrl: links.discordInviteUrl,
+          communityButtonUrl: links.communityButtonUrl,
           supportTg1: links.supportTg1,
           supportTg2: links.supportTg2,
         }),
@@ -71,15 +75,15 @@ export default function AdminContactLinksPage() {
   };
 
   return (
-    <AdminLayout title="Ссылки для страницы контактов" description="Настройка ссылок на Telegram, Discord и поддержку">
+    <AdminLayout title="Ссылки" description="Настройка ссылок для сайта и бота">
       <div className="max-w-2xl">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center">
             <Link2 className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Ссылки контактов</h1>
-            <p className="text-gray-400 text-sm">Эти ссылки отображаются на странице «Контакты»</p>
+            <h1 className="text-2xl font-bold text-white">Ссылки</h1>
+            <p className="text-gray-400 text-sm">Ссылки для страницы контактов и кнопки «В сообщество» в боте</p>
           </div>
         </div>
 
@@ -122,6 +126,18 @@ export default function AdminContactLinksPage() {
                 className="w-full px-4 py-2.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 outline-none"
               />
               <p className="text-xs text-gray-500 mt-1">Приглашение на сервер (Invite link)</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Ссылка для кнопки «В сообщество» в боте</label>
+              <input
+                type="url"
+                value={links.communityButtonUrl}
+                onChange={(e) => setLinks((l) => ({ ...l, communityButtonUrl: e.target.value }))}
+                placeholder="https://discord.gg/... или https://t.me/..."
+                className="w-full px-4 py-2.5 rounded-xl bg-black/30 border border-white/10 text-white placeholder-gray-500 focus:border-sky-500/50 outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Куда переходить по нажатию кнопки после оплаты подписки. Если пусто — используется ссылка на Discord выше.</p>
             </div>
 
             <div className="border-t border-white/10 pt-6">

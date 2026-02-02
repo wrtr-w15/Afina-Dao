@@ -20,7 +20,9 @@ import {
   X,
   Ban,
   Play,
-  Plus
+  Plus,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 interface Subscription {
@@ -66,6 +68,16 @@ const statusConfig = {
   cancelled: { label: 'Отменена', color: 'bg-gray-500/20 text-gray-400', icon: AlertCircle },
 };
 
+/** Статус для отображения: если в БД active, но end_date уже прошёл — считаем истекшей. */
+function getEffectiveStatus(sub: Subscription): Subscription['status'] {
+  if (sub.status !== 'active' || !sub.endDate) return sub.status;
+  const end = new Date(sub.endDate);
+  const now = new Date();
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return endDay < today ? 'expired' : sub.status;
+}
+
 export default function SubscriptionsPage() {
   const router = useRouter();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -73,6 +85,11 @@ export default function SubscriptionsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [stats, setStats] = useState({ total: 0, active: 0, pending: 0, expired: 0 });
+  const [usersWithActiveSubscription, setUsersWithActiveSubscription] = useState<number | null>(null);
+  const [paymentsByMonth, setPaymentsByMonth] = useState<{ month: string; monthLabel: string; count: number; amount: number }[]>([]);
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+  const [monthPayments, setMonthPayments] = useState<Record<string, { id: string; amount: number; currency: string; paidAt: string | null; user?: { telegramUsername?: string; telegramFirstName?: string } }[]>>({});
+  const [loadingMonth, setLoadingMonth] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
   
   // Edit modal
@@ -100,16 +117,28 @@ export default function SubscriptionsPage() {
       setSubscriptions(data.subscriptions);
       setPagination(prev => ({ ...prev, ...data.pagination }));
 
-      // Подсчёт статистики
+      // Подсчёт статистики по подпискам
       const statsResponse = await fetch('/api/subscriptions?limit=1000');
       const statsData = await statsResponse.json();
       const allSubs = statsData.subscriptions;
       setStats({
         total: allSubs.length,
-        active: allSubs.filter((s: Subscription) => s.status === 'active').length,
+        active: allSubs.filter((s: Subscription) => getEffectiveStatus(s) === 'active').length,
         pending: allSubs.filter((s: Subscription) => s.status === 'pending').length,
-        expired: allSubs.filter((s: Subscription) => s.status === 'expired').length,
+        expired: allSubs.filter((s: Subscription) => getEffectiveStatus(s) === 'expired').length,
       });
+
+      // Людей с активной подпиской и оплаты по месяцам
+      try {
+        const adminStatsRes = await fetch('/api/admin/stats');
+        if (adminStatsRes.ok) {
+          const adminStats = await adminStatsRes.json();
+          setUsersWithActiveSubscription(adminStats.users?.withPaidSubscription ?? null);
+          setPaymentsByMonth(Array.isArray(adminStats.paymentsByMonth) ? adminStats.paymentsByMonth : []);
+        }
+      } catch {
+        // игнорируем
+      }
     } catch (error) {
       console.error('Error loading subscriptions:', error);
     } finally {
@@ -273,6 +302,27 @@ export default function SubscriptionsPage() {
     });
   };
 
+  const toggleMonthDetails = async (month: string) => {
+    if (expandedMonth === month) {
+      setExpandedMonth(null);
+      return;
+    }
+    setExpandedMonth(month);
+    if (monthPayments[month]) return;
+    setLoadingMonth(month);
+    try {
+      const res = await fetch(`/api/admin/payments-by-month?month=${month}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMonthPayments(prev => ({ ...prev, [month]: data.payments || [] }));
+      }
+    } catch {
+      setMonthPayments(prev => ({ ...prev, [month]: [] }));
+    } finally {
+      setLoadingMonth(null);
+    }
+  };
+
   const getDaysLeft = (endDate?: string) => {
     if (!endDate) return null;
     const end = new Date(endDate);
@@ -300,7 +350,7 @@ export default function SubscriptionsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div className="rounded-xl bg-white/5 border border-white/10 p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
@@ -308,7 +358,7 @@ export default function SubscriptionsPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{stats.total}</p>
-                <p className="text-sm text-gray-400">Всего</p>
+                <p className="text-sm text-gray-400">Всего подписок</p>
               </div>
             </div>
           </div>
@@ -318,8 +368,21 @@ export default function SubscriptionsPage() {
                 <CheckCircle className="h-5 w-5 text-emerald-400" />
               </div>
               <div>
+                <p className="text-2xl font-bold text-white">
+                  {usersWithActiveSubscription !== null ? usersWithActiveSubscription : '—'}
+                </p>
+                <p className="text-sm text-gray-400">Людей с активной подпиской</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-500/20 flex items-center justify-center">
+                <Play className="h-5 w-5 text-teal-400" />
+              </div>
+              <div>
                 <p className="text-2xl font-bold text-white">{stats.active}</p>
-                <p className="text-sm text-gray-400">Активных</p>
+                <p className="text-sm text-gray-400">Активных записей</p>
               </div>
             </div>
           </div>
@@ -346,6 +409,89 @@ export default function SubscriptionsPage() {
             </div>
           </div>
         </div>
+
+        {/* Оплаты по месяцам */}
+        {paymentsByMonth.length > 0 && (
+          <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+            <h2 className="text-lg font-semibold text-white px-6 py-4 border-b border-white/10">
+              Оплаты по месяцам (завершённые)
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Месяц</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Кол-во оплат</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Сумма</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {paymentsByMonth.map((row) => (
+                    <React.Fragment key={row.month}>
+                      <tr
+                        onClick={() => toggleMonthDetails(row.month)}
+                        className="hover:bg-white/[0.06] transition-colors cursor-pointer"
+                      >
+                        <td className="px-6 py-3 text-white font-medium">
+                          <span className="flex items-center gap-2">
+                            {expandedMonth === row.month ? (
+                              <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
+                            )}
+                            {row.monthLabel}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-right text-gray-300 tabular-nums">{row.count}</td>
+                        <td className="px-6 py-3 text-right text-gray-300 tabular-nums">
+                          {row.amount.toFixed(2)} <span className="text-gray-500 text-xs">USDT</span>
+                        </td>
+                      </tr>
+                      {expandedMonth === row.month && (
+                        <tr className="bg-white/[0.03]">
+                          <td colSpan={3} className="px-6 py-4">
+                            {loadingMonth === row.month ? (
+                              <p className="text-sm text-gray-400">Загрузка...</p>
+                            ) : (monthPayments[row.month]?.length ?? 0) === 0 ? (
+                              <p className="text-sm text-gray-400">Нет оплат за этот месяц</p>
+                            ) : (
+                              <div className="rounded-lg border border-white/10 overflow-hidden">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b border-white/10 bg-white/5">
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Дата</th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Пользователь</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-400">Сумма</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-white/5">
+                                    {monthPayments[row.month].map((p) => (
+                                      <tr key={p.id}>
+                                        <td className="px-4 py-2 text-gray-300">
+                                          {p.paidAt ? formatDate(p.paidAt) : '—'}
+                                        </td>
+                                        <td className="px-4 py-2 text-gray-300">
+                                          {p.user?.telegramUsername ? `@${p.user.telegramUsername}` : p.user?.telegramFirstName || '—'}
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-gray-300 tabular-nums">
+                                          {p.amount.toFixed(2)} {p.currency || 'USDT'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
@@ -401,8 +547,9 @@ export default function SubscriptionsPage() {
                   </tr>
                 ) : (
                   filteredSubscriptions.map((sub) => {
-                    const StatusIcon = statusConfig[sub.status].icon;
-                    const daysLeft = sub.status === 'active' ? getDaysLeft(sub.endDate) : null;
+                    const effectiveStatus = getEffectiveStatus(sub);
+                    const StatusIcon = statusConfig[effectiveStatus].icon;
+                    const daysLeft = effectiveStatus === 'active' ? getDaysLeft(sub.endDate) : null;
 
                     return (
                       <tr key={sub.id} className="hover:bg-white/[0.02] transition-colors">
@@ -440,9 +587,9 @@ export default function SubscriptionsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${statusConfig[sub.status].color}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${statusConfig[effectiveStatus].color}`}>
                             <StatusIcon className="h-3.5 w-3.5" />
-                            {statusConfig[sub.status].label}
+                            {statusConfig[effectiveStatus].label}
                           </span>
                           {daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && (
                             <span className="ml-2 text-xs text-yellow-400">
@@ -466,7 +613,7 @@ export default function SubscriptionsPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-1">
-                            {sub.status === 'active' && (
+                            {effectiveStatus === 'active' && (
                               <button
                                 onClick={() => quickDeactivate(sub)}
                                 className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
@@ -475,7 +622,7 @@ export default function SubscriptionsPage() {
                                 <Ban className="h-4 w-4" />
                               </button>
                             )}
-                            {(sub.status === 'pending' || sub.status === 'expired' || sub.status === 'cancelled') && (
+                            {(effectiveStatus === 'pending' || effectiveStatus === 'expired' || effectiveStatus === 'cancelled') && (
                               <button
                                 onClick={() => quickActivate(sub)}
                                 className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all"
@@ -484,7 +631,7 @@ export default function SubscriptionsPage() {
                                 <Play className="h-4 w-4" />
                               </button>
                             )}
-                            {sub.status === 'active' && (
+                            {effectiveStatus === 'active' && (
                               <button
                                 onClick={() => extendSubscription(sub, 1)}
                                 className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-all"

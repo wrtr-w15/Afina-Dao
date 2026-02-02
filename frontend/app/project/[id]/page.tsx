@@ -265,15 +265,18 @@ export default function ProjectPage() {
               {/* Markdown Sections */}
               {sections.length > 0 && (
                 <div className="space-y-8">
-                  {sections.map((section, index) => (
-                    <div 
-                      key={section.id} 
-                      id={`section-${index}`} 
-                      className="scroll-mt-20"
-                    >
-                      <h2 className="text-2xl font-bold text-white mb-4 pt-4 border-t border-white/10">
-                        {section.title}
-                      </h2>
+                  {sections.map((section, index) => {
+                    // Первый раздел не должен иметь верхнюю границу, если перед ним есть описание
+                    const hasDescriptionBefore = translatedContent.description && index === 0;
+                    return (
+                      <div 
+                        key={section.id} 
+                        id={`section-${index}`} 
+                        className="scroll-mt-20"
+                      >
+                        <h2 className={`text-2xl font-bold text-white mb-4 pt-4 ${hasDescriptionBefore ? '' : 'border-t border-white/10'}`}>
+                          {section.title}
+                        </h2>
                       
                       {section.content && (
                         <div 
@@ -283,8 +286,9 @@ export default function ProjectPage() {
                           }}
                         />
                       )}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -300,34 +304,29 @@ export default function ProjectPage() {
             </div>
           </div>
 
-          {/* Right Sidebar - Navigation */}
+          {/* Сайдбар: навигация по разделам, при скролле прилипает к верху */}
           {!isMobile && sections.length > 0 && (
-            <div className={`flex-shrink-0 ${isCompact ? 'w-48' : 'w-80'}`}>
-              <div className="sticky top-24 space-y-4">
-                <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-2 rounded-lg">
-                  <nav className="px-1 pb-1 space-y-0.5">
-                    {sections.map((section, index) => (
-                      <button
-                        key={section.id}
-                        onClick={() => scrollToSection(index)}
-                        className={`w-full text-left px-2 py-2.5 text-xs rounded transition-colors ${
-                          activeSection === index
-                            ? 'text-blue-400 font-medium bg-blue-500/10'
-                            : 'text-gray-400 hover:text-white hover:bg-white/5'
-                        }`}
-                        title={isCompact ? section.title : undefined}
-                      >
-                        {isCompact ? (
-                          <span className="truncate block">
-                            {section.title.length > 20 ? section.title.substring(0, 20) + '...' : section.title}
-                          </span>
-                        ) : (
-                          section.title
-                        )}
-                      </button>
-                    ))}
-                  </nav>
-                </div>
+            <div className="flex-shrink-0 w-64 min-w-0 ml-6">
+              <div className="sticky top-4 z-20 self-start">
+                <nav
+                  className="w-56 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl py-3 px-3 shadow-lg"
+                  aria-label="Навигация по разделам"
+                >
+                  {sections.map((section, index) => (
+                    <button
+                      key={section.id}
+                      onClick={() => scrollToSection(index)}
+                      className={`w-full text-left py-2 px-3 rounded-lg flex items-center gap-2 text-sm transition-colors duration-150 leading-snug ${
+                        activeSection === index
+                          ? 'text-white bg-white/10'
+                          : 'text-gray-400 hover:text-gray-300 hover:bg-white/5'
+                      }`}
+                      title={section.title}
+                    >
+                      <span className="break-words">{section.title}</span>
+                    </button>
+                  ))}
+                </nav>
               </div>
             </div>
           )}

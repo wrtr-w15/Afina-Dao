@@ -4,6 +4,7 @@ import { getConnection } from '@/lib/database';
 const DEFAULT_KEYS = [
   { key: 'telegram_channel_url', value: '' },
   { key: 'discord_invite_url', value: '' },
+  { key: 'community_button_url', value: '' },
   { key: 'support_tg_1', value: 'kirjeyy' },
   { key: 'support_tg_2', value: 'ascys' },
 ] as const;
@@ -27,6 +28,7 @@ async function ensureTableAndDefaults(connection: any) {
 function mapRowsToResponse(rows: any[]): {
   telegramChannelUrl: string;
   discordInviteUrl: string;
+  communityButtonUrl: string;
   supportTgUsernames: string[];
 } {
   const map: Record<string, string> = {};
@@ -39,6 +41,7 @@ function mapRowsToResponse(rows: any[]): {
   return {
     telegramChannelUrl: (map.telegram_channel_url ?? '').trim(),
     discordInviteUrl: (map.discord_invite_url ?? '').trim(),
+    communityButtonUrl: (map.community_button_url ?? '').trim(),
     supportTgUsernames,
   };
 }
@@ -49,7 +52,7 @@ export async function GET() {
   try {
     await ensureTableAndDefaults(connection);
     const [rows] = await connection.execute(
-      `SELECT \`key\`, value FROM site_contact_links WHERE \`key\` IN ('telegram_channel_url', 'discord_invite_url', 'support_tg_1', 'support_tg_2')`
+      `SELECT \`key\`, value FROM site_contact_links WHERE \`key\` IN ('telegram_channel_url', 'discord_invite_url', 'community_button_url', 'support_tg_1', 'support_tg_2')`
     );
     return NextResponse.json(mapRowsToResponse(rows as any[]));
   } catch (error) {
@@ -58,6 +61,7 @@ export async function GET() {
       {
         telegramChannelUrl: '',
         discordInviteUrl: '',
+        communityButtonUrl: '',
         supportTgUsernames: ['kirjeyy', 'ascys'],
       },
       { status: 200 }

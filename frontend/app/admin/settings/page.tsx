@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { useToast } from '@/components/admin/ToastContext';
 import { 
   Settings, 
   Save, 
@@ -20,12 +21,8 @@ interface PricingSettings {
   discounts: { [key: number]: number };
 }
 
-interface Message {
-  type: 'success' | 'error';
-  text: string;
-}
-
 export default function AdminSettingsPage() {
+  const toast = useToast();
   const [settings, setSettings] = useState<PricingSettings>({
     oneTimeInstallationPrice: 0,
     monthlyPricePerAccount: 0,
@@ -33,7 +30,6 @@ export default function AdminSettingsPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<Message | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -69,7 +65,7 @@ export default function AdminSettingsPage() {
       });
     } catch (error) {
       console.error('Error loading settings:', error);
-      setMessage({ type: 'error', text: 'Ошибка загрузки настроек' });
+      toast.showError('Ошибка загрузки настроек');
     } finally {
       setIsLoading(false);
     }
@@ -163,21 +159,6 @@ export default function AdminSettingsPage() {
           </p>
         </div>
 
-        {/* Message */}
-        {message && (
-          <div className={`flex items-center gap-3 p-4 rounded-xl mb-6 ${
-            message.type === 'success' 
-              ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-              : 'bg-red-500/10 border border-red-500/20 text-red-400'
-          }`}>
-            {message.type === 'success' ? (
-              <CheckCircle className="h-5 w-5 flex-shrink-0" />
-            ) : (
-              <AlertCircle className="h-5 w-5 flex-shrink-0" />
-            )}
-            <span className="text-sm">{message.text}</span>
-          </div>
-        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Base Prices */}

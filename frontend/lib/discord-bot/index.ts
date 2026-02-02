@@ -174,7 +174,17 @@ export async function grantRole(discordId: string): Promise<{ success: boolean; 
     }
 
     await member.roles.add(roleId);
-    
+
+    // Отправляем сообщение в ЛС о выдаче доступа
+    try {
+      await member.user.send(
+        '✅ **Вам выдана роль подписчика Afina DAO**\n\nТеперь вам доступны приватные каналы сервера. Добро пожаловать!'
+      );
+    } catch (dmError: any) {
+      // ЛС могут быть отключены — не считаем это ошибкой выдачи роли
+      console.warn(`Could not send DM to ${member.user.tag} after granting role:`, dmError.message);
+    }
+
     console.log(`✅ Role granted to ${member.user.tag} (${discordId})`);
     return { success: true };
   } catch (error: any) {

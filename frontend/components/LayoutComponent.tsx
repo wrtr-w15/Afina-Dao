@@ -25,7 +25,7 @@ export default function Layout({
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <div className="relative min-h-screen bg-[#0a0a0f] text-white overflow-hidden">
+      <div className="relative min-h-screen bg-[#0a0a0f] text-white">
         {/* Animated gradient background */}
         <div className="fixed inset-0 z-0">
           {/* Base dark gradient */}
