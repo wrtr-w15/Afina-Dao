@@ -268,41 +268,38 @@ export async function PUT(
           }
         }
 
-        // Уведомляем администраторов о продлении/активации подписки
+        // Уведомляем администраторов о продлении/активации подписки (вся необходимая информация)
         try {
-          const userInfo = subscription.telegram_username 
-            ? `@${subscription.telegram_username}` 
+          let tariffName = '';
+          if (subscription.tariff_id) {
+            const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [subscription.tariff_id]);
+            tariffName = (tRows as any[])[0]?.name || String(subscription.tariff_id);
+          }
+          const userInfo = subscription.telegram_username
+            ? `@${subscription.telegram_username}`
             : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
-          
-          // Получаем актуальные даты из обновленной подписки
           const finalEndDate = endDateVal || subscription.end_date;
           const finalStartDate = startDateVal || subscription.start_date;
-          
           const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
           const startDateStr = finalStartDate ? new Date(finalStartDate).toLocaleDateString('ru-RU') : 'не указана';
-          
-          const adminMessage = isRenewal ? `
-🔄 *Подписка продлена*
+          const header = isRenewal ? '🔄 *Подписка продлена*' : '✅ *Подписка активирована*';
+          const adminMessage = `
+${header}
 
 *Пользователь:* ${userInfo}
 *Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Имя:* ${subscription.telegram_first_name || '—'}
+*Тариф:* ${tariffName || '—'}
 *Статус:* ${oldStatus} → ${newStatus}
 *Начало:* ${startDateStr}
 *Окончание:* ${endDateStr}
 
-*Время:* ${new Date().toLocaleString('ru-RU')}
-          `.trim() : `
-✅ *Подписка активирована*
-
-*Пользователь:* ${userInfo}
-*Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
-*Статус:* ${oldStatus} → ${newStatus}
-*Начало:* ${startDateStr}
-*Окончание:* ${endDateStr}
+*Email (Notion):* ${subscription.email ? `\`${subscription.email}\`` : '—'}
+*Email (Google Drive):* ${subscription.google_drive_email ? `\`${subscription.google_drive_email}\`` : '—'}
+*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}
 
 *Время:* ${new Date().toLocaleString('ru-RU')}
           `.trim();
-
           await sendTelegramMessageToAll(adminMessage);
         } catch (e) {
           console.error('Failed to send subscription activation notification:', e);
@@ -354,28 +351,35 @@ export async function PUT(
           console.error('Failed to send expired notification to user:', e);
         }
 
-        // Уведомляем администраторов о деактивации подписки
+        // Уведомляем администраторов о деактивации подписки (тариф, почта для отзыва Notion)
         try {
-          const userInfo = subscription.telegram_username 
-            ? `@${subscription.telegram_username}` 
+          let tariffName = '';
+          if (subscription.tariff_id) {
+            const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [subscription.tariff_id]);
+            tariffName = (tRows as any[])[0]?.name || String(subscription.tariff_id);
+          }
+          const userInfo = subscription.telegram_username
+            ? `@${subscription.telegram_username}`
             : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
-          
-          // Получаем актуальную дату окончания
           const finalEndDate = endDateVal || subscription.end_date;
           const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
           const statusLabel = newStatus === 'expired' ? 'истекла' : 'отменена';
-          
           const adminMessage = `
 ❌ *Подписка ${statusLabel}*
 
 *Пользователь:* ${userInfo}
 *Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Имя:* ${subscription.telegram_first_name || '—'}
+*Тариф:* ${tariffName || '—'}
 *Статус:* ${oldStatus} → ${newStatus}
 *Окончание:* ${endDateStr}
 
+*Email (Notion) — отозвать доступ вручную:* ${subscription.email ? `\`${subscription.email}\`` : '—'}
+*Email (Google Drive):* ${subscription.google_drive_email ? `\`${subscription.google_drive_email}\`` : '—'}
+*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}
+
 *Время:* ${new Date().toLocaleString('ru-RU')}
           `.trim();
-
           await sendTelegramMessageToAll(adminMessage);
         } catch (e) {
           console.error('Failed to send subscription deactivation notification:', e);
@@ -430,11 +434,29 @@ export async function PUT(
         console.error('Failed to send expired notification to user:', e);
       }
       try {
+        let tariffName = '';
+        if (subscription.tariff_id) {
+          const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [subscription.tariff_id]);
+          tariffName = (tRows as any[])[0]?.name || String(subscription.tariff_id);
+        }
         const userInfo = subscription.telegram_username ? `@${subscription.telegram_username}` : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
         const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
-        await sendTelegramMessageToAll(
-          `❌ *Подписка истекла (дата изменена админом)*\n\n*Пользователь:* ${userInfo}\n*Окончание:* ${endDateStr}\n*Время:* ${now.toLocaleString('ru-RU')}`
-        );
+        const adminMessage = `
+❌ *Подписка истекла (дата изменена админом)*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Имя:* ${subscription.telegram_first_name || '—'}
+*Тариф:* ${tariffName || '—'}
+*Окончание:* ${endDateStr}
+
+*Email (Notion) — отозвать доступ вручную:* ${subscription.email ? `\`${subscription.email}\`` : '—'}
+*Email (Google Drive):* ${subscription.google_drive_email ? `\`${subscription.google_drive_email}\`` : '—'}
+*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}
+
+*Время:* ${now.toLocaleString('ru-RU')}
+        `.trim();
+        await sendTelegramMessageToAll(adminMessage);
       } catch (e) {
         console.error('Failed to send admin notification:', e);
       }

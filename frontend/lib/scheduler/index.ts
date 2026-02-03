@@ -6,6 +6,7 @@ import { revokeAccess } from '@/lib/notion';
 import { sendMessage } from '@/lib/telegram-bot';
 import { getBotText } from '@/lib/telegram-bot/get-text';
 import { sendExpiredNotificationToUser } from '@/lib/subscription-notifications';
+import { sendTelegramMessageToAll } from '@/lib/telegram';
 import crypto from 'crypto';
 
 const DEFAULT_EXPIRING_3_DAYS =
@@ -71,8 +72,11 @@ async function checkExpiredSubscriptions(): Promise<void> {
       SELECT 
         s.*,
         u.telegram_id,
+        u.telegram_username,
+        u.telegram_first_name,
         u.discord_id,
-        u.email
+        u.email,
+        u.google_drive_email
       FROM subscriptions s
       LEFT JOIN users u ON s.user_id = u.id
       WHERE s.status = 'active' 
@@ -143,12 +147,44 @@ async function processExpiredSubscription(connection: any, subscription: any): P
       crypto.randomUUID(),
       subscription.user_id,
       subscription.id,
-      JSON.stringify({ 
+      JSON.stringify({
         discordRevoked: subscription.discord_role_granted,
         notionRevoked: subscription.notion_access_granted
       })
     ]
   );
+
+  // Уведомление в 2FA: подписка истекла, данные пользователя и почта для отзыва доступа Notion
+  try {
+    let tariffName = '';
+    if (subscription.tariff_id) {
+      const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [subscription.tariff_id]);
+      tariffName = (tRows as any[])[0]?.name || String(subscription.tariff_id);
+    }
+    const userInfo = subscription.telegram_username
+      ? `@${subscription.telegram_username}`
+      : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
+    const endDateStr = subscription.end_date
+      ? new Date(subscription.end_date).toLocaleDateString('ru-RU')
+      : '—';
+    const adminMessage = `
+❌ *Подписка истекла*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${subscription.telegram_id || 'N/A'}\`
+*Имя:* ${subscription.telegram_first_name || '—'}
+*Тариф:* ${tariffName || '—'}
+*Окончание:* ${endDateStr}
+*Когда:* ${new Date().toLocaleString('ru-RU')}
+
+*Email (Notion) — отозвать доступ вручную:* ${subscription.email ? `\`${subscription.email}\`` : '—'}
+*Email (Google Drive):* ${subscription.google_drive_email ? `\`${subscription.google_drive_email}\`` : '—'}
+*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}
+    `.trim();
+    await sendTelegramMessageToAll(adminMessage);
+  } catch (e) {
+    console.error('Failed to send admin expired notification:', e);
+  }
 }
 
 // Проверка подписок, которые скоро истекут — по блокам уведомлений из БД с условиями

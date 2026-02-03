@@ -3,6 +3,7 @@ import { getConnection } from '@/lib/database';
 import { grantRole } from '@/lib/discord-bot';
 import { grantAccess } from '@/lib/notion';
 import { sendMessage } from '@/lib/telegram-bot';
+import { sendTelegramMessageToAll } from '@/lib/telegram';
 import crypto from 'crypto';
 
 // POST /api/payments/webhook - вебхук от платёжной системы
@@ -237,4 +238,42 @@ async function handlePaymentRefunded(connection: any, data: any): Promise<void> 
       JSON.stringify({ externalId })
     ]
   );
+
+  // Уведомление в 2FA: подписка отменена (возврат), данные и почта для отзыва Notion
+  try {
+    const [subRows] = await connection.execute(
+      `SELECT s.tariff_id, s.end_date, u.telegram_id, u.telegram_username, u.telegram_first_name, u.email, u.google_drive_email, u.discord_id
+       FROM subscriptions s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE s.id = ?`,
+      [payment.subscription_id]
+    );
+    const row = (subRows as any[])[0];
+    if (row) {
+      let tariffName = '';
+      if (row.tariff_id) {
+        const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [row.tariff_id]);
+        tariffName = (tRows as any[])[0]?.name || String(row.tariff_id);
+      }
+      const userInfo = row.telegram_username ? `@${row.telegram_username}` : row.telegram_first_name || `ID: ${row.telegram_id || 'N/A'}`;
+      const endDateStr = row.end_date ? new Date(row.end_date).toLocaleDateString('ru-RU') : '—';
+      const adminMessage = `
+🔄 *Подписка отменена (возврат)*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${row.telegram_id || 'N/A'}\`
+*Имя:* ${row.telegram_first_name || '—'}
+*Тариф:* ${tariffName || '—'}
+*Окончание было:* ${endDateStr}
+*Когда:* ${new Date().toLocaleString('ru-RU')}
+
+*Email (Notion) — отозвать доступ вручную:* ${row.email ? `\`${row.email}\`` : '—'}
+*Email (Google Drive):* ${row.google_drive_email ? `\`${row.google_drive_email}\`` : '—'}
+*Discord ID:* ${row.discord_id ? `\`${row.discord_id}\`` : '—'}
+      `.trim();
+      await sendTelegramMessageToAll(adminMessage);
+    }
+  } catch (e) {
+    console.error('Failed to send admin refund notification:', e);
+  }
 }

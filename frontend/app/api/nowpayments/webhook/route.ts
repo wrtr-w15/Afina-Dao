@@ -237,6 +237,26 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     return;
   }
 
+  // Определяем тип операции (покупка / продление) и название тарифа для уведомления 2FA
+  let tariffName = '';
+  let isRenewal = false;
+  try {
+    const [subRows] = await connection.execute(
+      'SELECT status, tariff_id FROM subscriptions WHERE id = ?',
+      [payment.sub_id]
+    );
+    const sub = (subRows as any[])[0];
+    if (sub) {
+      isRenewal = sub.status === 'active';
+      if (sub.tariff_id) {
+        const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [sub.tariff_id]);
+        tariffName = (tRows as any[])[0]?.name || String(sub.tariff_id);
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching subscription/tariff for admin notification:', e);
+  }
+
   // Обновляем платёж
   await connection.execute(
     `UPDATE payments 
@@ -433,12 +453,12 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     console.warn('[NOWPayments Webhook] No telegram_id for user_id=%s, skipping user notification', payment.user_id);
   }
 
-  // Уведомляем администраторов через 2FA бота (до 3 chat ID)
+  // Уведомляем администраторов через 2FA бота: полные данные пользователя и тариф (покупка/продление)
   try {
-    const userInfo = payment.telegram_username 
-      ? `@${payment.telegram_username}` 
+    const userInfo = payment.telegram_username
+      ? `@${payment.telegram_username}`
       : payment.telegram_first_name || `ID: ${payment.telegram_id}`;
-    
+
     let accessInfo = '';
     if (discordGranted) accessInfo += '\n✅ Discord роль выдана';
     if (notionGranted) accessInfo += '\n✅ Notion доступ открыт';
@@ -447,13 +467,22 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
       accessInfo = '\n⚠️ Доступы не выданы (нет данных пользователя)';
     }
 
+    const periodLabel = periodMonths === 1 ? 'месяц' : periodMonths < 5 ? 'месяца' : 'месяцев';
+    const header = isRenewal ? '🔄 *Подписка продлена*' : '💰 *Новая оплата подписки*';
+
     const adminMessage = `
-💰 *Новая оплата подписки*
+${header}
 
 *Пользователь:* ${userInfo}
 *Telegram ID:* \`${payment.telegram_id}\`
+*Имя:* ${payment.telegram_first_name || '—'}
+*Email (Notion):* ${payment.email ? `\`${payment.email}\`` : '—'}
+*Email (Google Drive):* ${payment.google_drive_email ? `\`${payment.google_drive_email}\`` : '—'}
+*Discord ID:* ${payment.discord_id ? `\`${payment.discord_id}\`` : '—'}
+
+*Тариф:* ${tariffName || '—'}
 *Сумма:* ${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}
-*Период:* ${periodMonths} ${periodMonths === 1 ? 'месяц' : periodMonths < 5 ? 'месяца' : 'месяцев'}
+*Период:* ${periodMonths} ${periodLabel}
 *Подписка до:* ${endDate.toLocaleDateString('ru-RU')}${accessInfo}
 
 *Payment ID:* \`${ipnData.payment_id}\`
@@ -461,6 +490,22 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     `.trim();
 
     await sendTelegramMessageToAll(adminMessage);
+
+    // Запрос на ручное добавление email в Notion (гости через API недоступны)
+    if (payment.email && payment.email.trim()) {
+      const notionRequest = `
+📋 *Notion: добавить вручную*
+
+Добавьте в Notion гостя с email:
+\`${payment.email.trim()}\`
+
+Пользователь: ${userInfo} (TG ID: \`${payment.telegram_id}\`)
+Тариф: ${tariffName || '—'}
+      `.trim();
+      await sendTelegramMessageToAll(notionRequest).catch((err) =>
+        console.error('Failed to send Notion manual-add request to 2FA:', err)
+      );
+    }
   } catch (e) {
     console.error('Failed to send admin notification:', e);
   }
@@ -557,6 +602,40 @@ async function handlePaymentRefunded(connection: any, payment: any, ipnData: IPN
     } catch (e) {
       console.error('[NOWPayments Webhook] Failed to send refund notification:', e);
     }
+  }
+
+  // Уведомление в 2FA: подписка отменена (возврат), данные пользователя и почта для отзыва доступа Notion
+  try {
+    let tariffName = '';
+    const [subRows] = await connection.execute(
+      'SELECT tariff_id FROM subscriptions WHERE id = ?',
+      [payment.sub_id]
+    );
+    const sub = (subRows as any[])[0];
+    if (sub?.tariff_id) {
+      const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [sub.tariff_id]);
+      tariffName = (tRows as any[])[0]?.name || String(sub.tariff_id);
+    }
+    const userInfo = payment.telegram_username
+      ? `@${payment.telegram_username}`
+      : payment.telegram_first_name || `ID: ${payment.telegram_id}`;
+    const whenStr = new Date().toLocaleString('ru-RU');
+    const adminMessage = `
+🔄 *Подписка отменена (возврат)*
+
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${payment.telegram_id}\`
+*Имя:* ${payment.telegram_first_name || '—'}
+*Тариф:* ${tariffName || '—'}
+*Когда:* ${whenStr}
+
+*Email (Notion) — отозвать доступ вручную:* ${payment.email ? `\`${payment.email}\`` : '—'}
+*Email (Google Drive):* ${payment.google_drive_email ? `\`${payment.google_drive_email}\`` : '—'}
+*Discord ID:* ${payment.discord_id ? `\`${payment.discord_id}\`` : '—'}
+    `.trim();
+    await sendTelegramMessageToAll(adminMessage);
+  } catch (e) {
+    console.error('Failed to send admin refund notification:', e);
   }
 }
 
