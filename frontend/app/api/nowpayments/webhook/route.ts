@@ -237,17 +237,19 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     return;
   }
 
-  // Определяем тип операции (покупка / продление) и название тарифа для уведомления 2FA
+  // Определяем тип операции (покупка / продление), даты подписки и название тарифа для уведомления 2FA
   let tariffName = '';
   let isRenewal = false;
+  let currentEndDate: Date | null = null;
   try {
     const [subRows] = await connection.execute(
-      'SELECT status, tariff_id FROM subscriptions WHERE id = ?',
+      'SELECT status, tariff_id, end_date FROM subscriptions WHERE id = ?',
       [payment.sub_id]
     );
     const sub = (subRows as any[])[0];
     if (sub) {
       isRenewal = sub.status === 'active';
+      if (sub.end_date) currentEndDate = new Date(sub.end_date);
       if (sub.tariff_id) {
         const [tRows] = await connection.execute('SELECT name FROM tariffs WHERE id = ?', [sub.tariff_id]);
         tariffName = (tRows as any[])[0]?.name || String(sub.tariff_id);
@@ -279,12 +281,23 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     ]
   );
 
-  // Активируем подписку
+  // Активируем подписку или продлеваем её
   const now = new Date();
-  const periodMonths = payment.period_months || 1;
-  const endDate = new Date(now);
+  let providerData: Record<string, unknown> = {};
+  if (payment.provider_data) {
+    try {
+      providerData = typeof payment.provider_data === 'string' ? JSON.parse(payment.provider_data) : payment.provider_data as Record<string, unknown>;
+    } catch (_) {}
+  }
+  const periodMonths = (providerData as any).period_months != null ? Number((providerData as any).period_months) : (payment.period_months || 1);
+  // При продлении: новая дата окончания = от текущей даты окончания подписки (или от сегодня, если уже истекла)
+  const baseDate =
+    isRenewal && currentEndDate
+      ? new Date(Math.max(currentEndDate.getTime(), now.getTime()))
+      : now;
+  const endDate = new Date(baseDate);
   endDate.setMonth(endDate.getMonth() + periodMonths);
-  
+
   // Получаем информацию о промокоде и дополнительные дни, если есть
   let extraDays = 0;
   try {
@@ -295,13 +308,13 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
        WHERE pu.subscription_id = ?`,
       [payment.sub_id]
     );
-    
+
     if ((promocodeUsages as any[]).length > 0) {
       const promocode = (promocodeUsages as any[])[0];
       if (promocode.extra_days) {
         try {
-          const extraDaysMap = typeof promocode.extra_days === 'string' 
-            ? JSON.parse(promocode.extra_days) 
+          const extraDaysMap = typeof promocode.extra_days === 'string'
+            ? JSON.parse(promocode.extra_days)
             : promocode.extra_days;
           if (extraDaysMap && typeof extraDaysMap === 'object') {
             const periodKey = String(periodMonths);
@@ -317,22 +330,35 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
   } catch (e) {
     console.error('Error fetching promocode extra_days:', e);
   }
-  
-  // Если есть дополнительные дни, добавляем их
+
   if (extraDays > 0) {
     endDate.setDate(endDate.getDate() + extraDays);
     console.log(`[NOWPayments Webhook] Added ${extraDays} extra days to subscription ${payment.sub_id} for period ${periodMonths} months`);
   }
 
-  await connection.execute(
-    `UPDATE subscriptions 
-     SET status = 'active', 
-         start_date = ?, 
-         end_date = ?, 
-         updated_at = NOW() 
-     WHERE id = ?`,
-    [now, endDate, payment.sub_id]
-  );
+  if (isRenewal) {
+    // Продление: только сдвигаем end_date, start_date не трогаем
+    await connection.execute(
+      `UPDATE subscriptions 
+       SET status = 'active', 
+           end_date = ?, 
+           updated_at = NOW() 
+       WHERE id = ?`,
+      [endDate, payment.sub_id]
+    );
+    console.log(`[NOWPayments Webhook] Subscription ${payment.sub_id} renewed: end_date extended to ${endDate.toISOString()}`);
+  } else {
+    // Новая покупка: выставляем start_date и end_date от текущего момента
+    await connection.execute(
+      `UPDATE subscriptions 
+       SET status = 'active', 
+           start_date = ?, 
+           end_date = ?, 
+           updated_at = NOW() 
+       WHERE id = ?`,
+      [now, endDate, payment.sub_id]
+    );
+  }
 
   // Выдаём доступы
   let discordGranted = false;
@@ -341,7 +367,8 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
 
   if (payment.discord_id) {
     try {
-      const result = await grantRole(payment.discord_id);
+      // При продлении не отправляем ЛС в Discord — только при первой выдаче (покупка) или при отзыве (истечение)
+      const result = await grantRole(payment.discord_id, { sendNotification: !isRenewal });
       discordGranted = result.success;
     } catch (e) {
       console.error('Failed to grant Discord role:', e);
@@ -439,7 +466,12 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
       if (discordGranted) accessInfo += '\n✅ Роль в Discord выдана';
       if (notionGranted) accessInfo += '\n✅ Доступ к Notion открыт';
       if (googleDriveGranted) accessInfo += '\n✅ Доступ к Google Drive открыт';
-      
+      if (isRenewal) {
+        // Продление — без доп. текста про Notion
+      } else {
+        accessInfo += '\n\n📋 Доступ в Notion будет выдан в течение 12 часов. Если возникнут проблемы — пишите в /help';
+      }
+
       const discordInvite = process.env.DISCORD_INVITE_URL;
       const discordButton = discordInvite ? `\n\n🎮 <a href="${discordInvite}">Перейти в Discord</a>` : '';
 
@@ -453,25 +485,42 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     console.warn('[NOWPayments Webhook] No telegram_id for user_id=%s, skipping user notification', payment.user_id);
   }
 
-  // Уведомляем администраторов через 2FA бота: полные данные пользователя и тариф (покупка/продление)
+  // Уведомляем администраторов через 2FA бота (разный формат для продления и новой покупки)
   try {
     const userInfo = payment.telegram_username
       ? `@${payment.telegram_username}`
       : payment.telegram_first_name || `ID: ${payment.telegram_id}`;
+    const fromDateStr = baseDate.toLocaleDateString('ru-RU');
+    const toDateStr = endDate.toLocaleDateString('ru-RU');
+    const amountStr = `${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}`;
 
-    let accessInfo = '';
-    if (discordGranted) accessInfo += '\n✅ Discord роль выдана';
-    if (notionGranted) accessInfo += '\n✅ Notion доступ открыт';
-    if (googleDriveGranted) accessInfo += '\n✅ Google Drive доступ открыт';
-    if (!discordGranted && !notionGranted && !googleDriveGranted) {
-      accessInfo = '\n⚠️ Доступы не выданы (нет данных пользователя)';
-    }
+    let adminMessage: string;
+    if (isRenewal) {
+      adminMessage = `
+🔄 *Подписка продлена*
 
-    const periodLabel = periodMonths === 1 ? 'месяц' : periodMonths < 5 ? 'месяца' : 'месяцев';
-    const header = isRenewal ? '🔄 *Подписка продлена*' : '💰 *Новая оплата подписки*';
+*Дата продления:* от ${fromDateStr} до ${toDateStr}
+*Тариф:* ${tariffName || '—'}
+*Сумма оплаты:* ${amountStr}
 
-    const adminMessage = `
-${header}
+*Пользователь:* ${userInfo}
+*Telegram ID:* \`${payment.telegram_id}\`
+
+Доступы в Discord, Notion и Google Drive *активны* (продление без повторной выдачи).
+
+Спасибо, что вы с нами 🙏
+      `.trim();
+    } else {
+      let accessInfo = '';
+      if (discordGranted) accessInfo += '\n✅ Discord роль выдана';
+      if (notionGranted) accessInfo += '\n✅ Notion доступ открыт';
+      if (googleDriveGranted) accessInfo += '\n✅ Google Drive доступ открыт';
+      if (!discordGranted && !notionGranted && !googleDriveGranted) {
+        accessInfo = '\n⚠️ Доступы не выданы (нет данных пользователя)';
+      }
+      const periodLabel = periodMonths === 1 ? 'месяц' : periodMonths < 5 ? 'месяца' : 'месяцев';
+      adminMessage = `
+💰 *Новая оплата подписки*
 
 *Пользователь:* ${userInfo}
 *Telegram ID:* \`${payment.telegram_id}\`
@@ -481,18 +530,19 @@ ${header}
 *Discord ID:* ${payment.discord_id ? `\`${payment.discord_id}\`` : '—'}
 
 *Тариф:* ${tariffName || '—'}
-*Сумма:* ${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}
+*Сумма:* ${amountStr}
 *Период:* ${periodMonths} ${periodLabel}
-*Подписка до:* ${endDate.toLocaleDateString('ru-RU')}${accessInfo}
+*Подписка до:* ${toDateStr}${accessInfo}
 
 *Payment ID:* \`${ipnData.payment_id}\`
 *Время:* ${new Date().toLocaleString('ru-RU')}
-    `.trim();
+      `.trim();
+    }
 
     await sendTelegramMessageToAll(adminMessage);
 
-    // Запрос на ручное добавление email в Notion (гости через API недоступны)
-    if (payment.email && payment.email.trim()) {
+    // Запрос на ручное добавление email в Notion только при новой покупке (при продлении не просим — доступ уже есть)
+    if (!isRenewal && payment.email && payment.email.trim()) {
       const notionRequest = `
 📋 *Notion: добавить вручную*
 

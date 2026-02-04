@@ -4,7 +4,7 @@ import { grantRole, revokeRole } from '@/lib/discord-bot';
 import { grantAccess, revokeAccess } from '@/lib/notion';
 import { grantAccess as grantGoogleDriveAccess, revokeAccess as revokeGoogleDriveAccess } from '@/lib/google-drive';
 import { sendTelegramMessageToAll } from '@/lib/telegram';
-import { sendExpiredNotificationToUser, sendExpiringInDaysNotification } from '@/lib/subscription-notifications';
+import { sendExpiredNotificationToUser, sendExpiringInDaysNotification, userHasOtherActiveSubscription } from '@/lib/subscription-notifications';
 import crypto from 'crypto';
 
 /** Приводит ISO-дату или Date к формату MySQL DATETIME (YYYY-MM-DD HH:MM:SS) */
@@ -306,52 +306,53 @@ ${header}
         }
       }
 
-      // Если подписка стала неактивной - забираем доступы
-      if ((newStatus === 'expired' || newStatus === 'cancelled') && 
+      // Если подписка стала неактивной - забираем доступы только если у пользователя нет другой активной подписки
+      if ((newStatus === 'expired' || newStatus === 'cancelled') &&
           (oldStatus === 'active' || oldStatus === 'pending')) {
-        if (subscription.discord_id && subscription.discord_role_granted) {
-          await revokeRole(subscription.discord_id);
-          await connection.execute(
-            'UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?',
-            [id]
-          );
-        }
+        const hasOtherActive = await userHasOtherActiveSubscription(connection, subscription.user_id, id);
+        if (!hasOtherActive) {
+          if (subscription.discord_id && subscription.discord_role_granted) {
+            await revokeRole(subscription.discord_id);
+            await connection.execute(
+              'UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?',
+              [id]
+            );
+          }
 
-        if (subscription.email && subscription.notion_access_granted) {
-          await revokeAccess(subscription.email);
-          await connection.execute(
-            'UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?',
-            [id]
-          );
-        }
+          if (subscription.email && subscription.notion_access_granted) {
+            await revokeAccess(subscription.email);
+            await connection.execute(
+              'UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?',
+              [id]
+            );
+          }
 
-        if (subscription.google_drive_email) {
-          try {
-            await revokeGoogleDriveAccess(subscription.google_drive_email);
+          if (subscription.google_drive_email) {
             try {
-              await connection.execute(
-                'UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?',
-                [id]
-              );
-            } catch (e: any) {
-              // Если поле не существует, игнорируем
-              if (e.code !== 'ER_BAD_FIELD_ERROR') {
-                console.error('Failed to update google_drive_access_granted:', e);
+              await revokeGoogleDriveAccess(subscription.google_drive_email);
+              try {
+                await connection.execute(
+                  'UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?',
+                  [id]
+                );
+              } catch (e: any) {
+                if (e.code !== 'ER_BAD_FIELD_ERROR') {
+                  console.error('Failed to update google_drive_access_granted:', e);
+                }
               }
+            } catch (e) {
+              console.error('Failed to revoke Google Drive access:', e);
             }
+          }
+
+          try {
+            await sendExpiredNotificationToUser(connection, subscription);
           } catch (e) {
-            console.error('Failed to revoke Google Drive access:', e);
+            console.error('Failed to send expired notification to user:', e);
           }
         }
 
-        // Уведомляем пользователя в Telegram и Discord (как при естественном истечении)
-        try {
-          await sendExpiredNotificationToUser(connection, subscription);
-        } catch (e) {
-          console.error('Failed to send expired notification to user:', e);
-        }
-
-        // Уведомляем администраторов о деактивации подписки (тариф, почта для отзыва Notion)
+        // Уведомляем администраторов о деактивации подписки
         try {
           let tariffName = '';
           if (subscription.tariff_id) {
@@ -364,6 +365,7 @@ ${header}
           const finalEndDate = endDateVal || subscription.end_date;
           const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
           const statusLabel = newStatus === 'expired' ? 'истекла' : 'отменена';
+          const skipNote = hasOtherActive ? '\n\n_У пользователя есть другая активная подписка — доступы не снимались._' : '';
           const adminMessage = `
 ❌ *Подписка ${statusLabel}*
 
@@ -376,7 +378,7 @@ ${header}
 
 *Email (Notion) — отозвать доступ вручную:* ${subscription.email ? `\`${subscription.email}\`` : '—'}
 *Email (Google Drive):* ${subscription.google_drive_email ? `\`${subscription.google_drive_email}\`` : '—'}
-*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}
+*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}${skipNote}
 
 *Время:* ${new Date().toLocaleString('ru-RU')}
           `.trim();
@@ -387,7 +389,7 @@ ${header}
       }
     }
 
-    // Админ поставил дату окончания в прошлое — считаем подписку истекшей, забираем доступы и уведомляем пользователя
+    // Админ поставил дату окончания в прошлое — считаем подписку истекшей, забираем доступы только если нет другой активной
     const finalEndDate = endDateVal ?? subscription.end_date;
     const now = new Date();
     if (
@@ -396,42 +398,45 @@ ${header}
       oldStatus === 'active' &&
       (data.status === undefined || data.status === 'active')
     ) {
+      const hasOtherActiveEndDate = await userHasOtherActiveSubscription(connection, subscription.user_id, id);
       await connection.execute(
         `UPDATE subscriptions SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [id]
       );
-      if (subscription.discord_id && subscription.discord_role_granted) {
-        try {
-          await revokeRole(subscription.discord_id);
-          await connection.execute('UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?', [id]);
-        } catch (e) {
-          console.error('Failed to revoke Discord role:', e);
-        }
-      }
-      if (subscription.email && subscription.notion_access_granted) {
-        try {
-          await revokeAccess(subscription.email);
-          await connection.execute('UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?', [id]);
-        } catch (e) {
-          console.error('Failed to revoke Notion access:', e);
-        }
-      }
-      if (subscription.google_drive_email) {
-        try {
-          await revokeGoogleDriveAccess(subscription.google_drive_email);
+      if (!hasOtherActiveEndDate) {
+        if (subscription.discord_id && subscription.discord_role_granted) {
           try {
-            await connection.execute('UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?', [id]);
-          } catch (e: any) {
-            if (e?.code !== 'ER_BAD_FIELD_ERROR') console.error('Failed to update google_drive_access_granted:', e);
+            await revokeRole(subscription.discord_id);
+            await connection.execute('UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?', [id]);
+          } catch (e) {
+            console.error('Failed to revoke Discord role:', e);
           }
-        } catch (e) {
-          console.error('Failed to revoke Google Drive access:', e);
         }
-      }
-      try {
-        await sendExpiredNotificationToUser(connection, subscription);
-      } catch (e) {
-        console.error('Failed to send expired notification to user:', e);
+        if (subscription.email && subscription.notion_access_granted) {
+          try {
+            await revokeAccess(subscription.email);
+            await connection.execute('UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?', [id]);
+          } catch (e) {
+            console.error('Failed to revoke Notion access:', e);
+          }
+        }
+        if (subscription.google_drive_email) {
+          try {
+            await revokeGoogleDriveAccess(subscription.google_drive_email);
+            try {
+              await connection.execute('UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?', [id]);
+            } catch (e: any) {
+              if (e?.code !== 'ER_BAD_FIELD_ERROR') console.error('Failed to update google_drive_access_granted:', e);
+            }
+          } catch (e) {
+            console.error('Failed to revoke Google Drive access:', e);
+          }
+        }
+        try {
+          await sendExpiredNotificationToUser(connection, subscription);
+        } catch (e) {
+          console.error('Failed to send expired notification to user:', e);
+        }
       }
       try {
         let tariffName = '';
@@ -441,6 +446,7 @@ ${header}
         }
         const userInfo = subscription.telegram_username ? `@${subscription.telegram_username}` : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
         const endDateStr = finalEndDate ? new Date(finalEndDate).toLocaleDateString('ru-RU') : 'не указана';
+        const skipNote = hasOtherActiveEndDate ? '\n\n_У пользователя есть другая активная подписка — доступы не снимались._' : '';
         const adminMessage = `
 ❌ *Подписка истекла (дата изменена админом)*
 
@@ -452,7 +458,7 @@ ${header}
 
 *Email (Notion) — отозвать доступ вручную:* ${subscription.email ? `\`${subscription.email}\`` : '—'}
 *Email (Google Drive):* ${subscription.google_drive_email ? `\`${subscription.google_drive_email}\`` : '—'}
-*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}
+*Discord ID:* ${subscription.discord_id ? `\`${subscription.discord_id}\`` : '—'}${skipNote}
 
 *Время:* ${now.toLocaleString('ru-RU')}
         `.trim();

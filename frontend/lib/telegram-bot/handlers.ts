@@ -2,6 +2,7 @@
 
 import { getConnection } from '@/lib/database';
 import { isTelegramBlockedForSubscription, isBlocked, notifyAdminBlockedAttempt } from '@/lib/blocklist';
+import { sendTelegramMessageToAll } from '@/lib/telegram';
 import { nowPayments } from '@/lib/nowpayments';
 import { messages } from './messages';
 import { getBotButtons } from './get-text';
@@ -743,7 +744,16 @@ export async function handleSelectPlan(callbackQuery: any): Promise<void> {
   console.log('[Telegram Bot] handleSelectPlan: telegramId=%s planId=%s rawData=%s', telegramId, planId, rawData);
   try {
     await answerCallback(callbackQuery.id);
-    const plans = await getPlans(telegramId);
+    // При продлении подписки показываем планы того же тарифа (в т.ч. архивного), иначе выбранный план не найдётся
+    let tariffIdForRenewal: string | undefined;
+    try {
+      const { id: userId } = await getOrCreateUser(callbackQuery.from);
+      const subscription = await getActiveSubscription(userId);
+      if (subscription?.tariff_id) tariffIdForRenewal = String(subscription.tariff_id);
+    } catch (_) {
+      // игнорируем — без userId просто загрузим планы по умолчанию
+    }
+    const plans = await getPlans(telegramId, tariffIdForRenewal);
     console.log('[Telegram Bot] handleSelectPlan: got plans count=%s ids=%s', plans.length, plans.map((p: any) => p.id).join(','));
     const plan = plans.find((p: any) => String(p.id) === planId);
     if (!plan) {
@@ -836,6 +846,8 @@ export async function handleEmailInput(message: any): Promise<void> {
       await notifyAdminBlockedAttempt('email', email, telegramId, message.from?.username);
       return;
     }
+    const userBefore = await getUserData(telegramId);
+    const oldEmail = userBefore?.email?.trim() || null;
     const connection = await getConnection();
     try {
       await connection.execute('UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?', [email, telegramId]);
@@ -843,6 +855,13 @@ export async function handleEmailInput(message: any): Promise<void> {
       userDataCache.delete(telegramId);
     } finally {
       connection.release();
+    }
+    // Уведомление админу в 2FA: с какой на какую почту поменяли для Notion
+    if (oldEmail !== email) {
+      const userLabel = message.from?.username ? `@${message.from.username}` : message.from?.first_name || `ID: ${telegramId}`;
+      const fromTo = oldEmail ? `с \`${oldEmail}\` на \`${email}\`` : `указана почта: \`${email}\``;
+      const adminMsg = `📧 *Notion: смена почты в боте*\n\nПользователь ${userLabel} (TG ID: \`${telegramId}\`) ${oldEmail ? 'поменял' : 'указал'} почту для Notion: ${fromTo}`;
+      sendTelegramMessageToAll(adminMsg).catch((e) => console.error('Failed to send admin Notion email change notification:', e));
     }
     const state = await getUserState(telegramId);
     if (state?.state === 'entering_email' && state.data?.planId) {
@@ -983,7 +1002,15 @@ export async function handlePromocodeInput(message: any): Promise<void> {
     const checkData = await checkResponse.json();
     
     if (!checkData.valid) {
-      await sendMessage(chatId, `❌ ${checkData.error || 'Промокод недействителен'}`, getEmailInputKeyboard());
+      const needsDiscord = !user?.discord_id;
+      const needsNotionEmail = !user?.email;
+      const needsGoogleDriveEmail = !user?.google_drive_email;
+      const keyboard = getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), true);
+      await sendMessage(
+        chatId,
+        `❌ ${checkData.error || 'Промокод недействителен'}. Вы можете ввести другой промокод или продолжить оплату без скидки.`,
+        keyboard
+      );
       return;
     }
     
@@ -1029,7 +1056,17 @@ export async function handlePromocodeInput(message: any): Promise<void> {
     await sendMessage(chatId, fullMessage, getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), true));
   } catch (error) {
     console.error('Error in handlePromocodeInput:', error);
-    await sendMessage(chatId, '❌ Ошибка проверки промокода. Попробуйте позже.', getBackToMainKeyboard());
+    const state = await getUserState(telegramId).catch(() => null);
+    const user = state ? await getUserData(telegramId).catch(() => null) : null;
+    const needsDiscord = !user?.discord_id;
+    const needsNotionEmail = !user?.email;
+    const needsGoogleDriveEmail = !user?.google_drive_email;
+    const keyboard = getConfirmKeyboard(needsDiscord, needsNotionEmail, needsGoogleDriveEmail, getDiscordOAuthUrl(telegramId), true);
+    await sendMessage(
+      chatId,
+      '❌ Ошибка проверки промокода. Попробуйте ввести промокод снова или продолжить оплату без скидки.',
+      keyboard
+    );
   }
 }
 
@@ -1052,18 +1089,23 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
     const connection = await getConnection();
     try {
       const { id: userId } = await getOrCreateUser(callbackQuery.from);
-      const subscriptionId = crypto.randomUUID();
+      const activeSubscription = await getActiveSubscription(userId);
+      const isRenewal = !!activeSubscription;
+      const subscriptionId = isRenewal ? activeSubscription.id : crypto.randomUUID();
       const paymentId = crypto.randomUUID();
       const amount = Number(state.data.priceUsdt);
       const originalAmount = state.data.originalPrice ? Number(state.data.originalPrice) : amount;
       const promocodeId = state.data.promocodeId || null;
       const promocodeCode = state.data.promocode || null;
 
-      // tariff_id и tariff_price_id — как на сайте (tariffs + tariff_prices)
-      await connection.execute(
-        `INSERT INTO subscriptions (id, user_id, tariff_id, tariff_price_id, period_months, amount, currency, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-        [subscriptionId, userId, state.data.tariffId || null, state.data.planId, state.data.period, originalAmount, 'USDT']
-      );
+      if (!isRenewal) {
+        // Новая покупка: создаём новую подписку
+        await connection.execute(
+          `INSERT INTO subscriptions (id, user_id, tariff_id, tariff_price_id, period_months, amount, currency, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+          [subscriptionId, userId, state.data.tariffId || null, state.data.planId, state.data.period, originalAmount, 'USDT']
+        );
+      }
+      // Продление: платёж привязываем к существующей активной подписке (её end_date увеличится в webhook)
       await connection.execute(
         `INSERT INTO payments (id, subscription_id, user_id, amount, currency, status, payment_method) VALUES (?, ?, ?, ?, ?, 'pending', 'crypto')`,
         [paymentId, subscriptionId, userId, amount, 'USDT']
@@ -1110,6 +1152,7 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
               order_id: orderId,
               pay_currency: payCurrency,
               created_at: invoice.created_at,
+              period_months: state.data.period != null ? Number(state.data.period) : undefined,
             }),
             paymentId,
           ]

@@ -5,7 +5,7 @@ import { revokeRole } from '@/lib/discord-bot';
 import { revokeAccess } from '@/lib/notion';
 import { sendMessage } from '@/lib/telegram-bot';
 import { getBotText } from '@/lib/telegram-bot/get-text';
-import { sendExpiredNotificationToUser } from '@/lib/subscription-notifications';
+import { sendExpiredNotificationToUser, userHasOtherActiveSubscription } from '@/lib/subscription-notifications';
 import { sendTelegramMessageToAll } from '@/lib/telegram';
 import crypto from 'crypto';
 
@@ -102,6 +102,30 @@ const SETTINGS_ROW_ID = 'default';
 // Обработка истёкшей подписки
 async function processExpiredSubscription(connection: any, subscription: any): Promise<void> {
   console.log(`Processing expired subscription: ${subscription.id}`);
+
+  const hasOtherActive = await userHasOtherActiveSubscription(connection, subscription.user_id, subscription.id);
+  if (hasOtherActive) {
+    // У пользователя есть другая активная подписка — только помечаем эту как истёкшую, доступы не снимаем
+    await connection.execute(
+      `UPDATE subscriptions SET status = 'expired', updated_at = NOW() WHERE id = ?`,
+      [subscription.id]
+    );
+    await connection.execute(
+      `INSERT INTO subscription_logs (id, user_id, subscription_id, action, details)
+       VALUES (?, ?, ?, 'subscription_expired', ?)`,
+      [crypto.randomUUID(), subscription.user_id, subscription.id, JSON.stringify({ skippedRevoke: true, reason: 'user_has_other_active_subscription' })]
+    );
+    console.log(`Subscription ${subscription.id} expired but user has other active subscription — access not revoked`);
+    try {
+      const userInfo = subscription.telegram_username ? `@${subscription.telegram_username}` : subscription.telegram_first_name || `ID: ${subscription.telegram_id || 'N/A'}`;
+      await sendTelegramMessageToAll(
+        `❌ *Подписка истекла*\n\nПользователь: ${userInfo}\nПодписка \`${subscription.id}\` помечена как истекшая.\n\n_У пользователя есть другая активная подписка — доступы не снимались._`
+      );
+    } catch (e) {
+      console.error('Failed to send admin skipped-revoke notification:', e);
+    }
+    return;
+  }
 
   // Меняем статус на expired
   await connection.execute(

@@ -59,6 +59,25 @@ export async function getUserTariffIds(connection: any, userId: string): Promise
   }
 }
 
+/** Есть ли у пользователя другая активная подписка (кроме указанной). Не отзывать доступы и не слать «истекла», если есть. */
+export async function userHasOtherActiveSubscription(
+  connection: any,
+  userId: string,
+  excludeSubscriptionId: string
+): Promise<boolean> {
+  try {
+    const [rows] = await connection.execute(
+      `SELECT 1 FROM subscriptions 
+       WHERE user_id = ? AND status = 'active' AND end_date > NOW() AND id != ? 
+       LIMIT 1`,
+      [userId, excludeSubscriptionId]
+    );
+    return (rows as any[]).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function setsEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const setA = new Set(a);

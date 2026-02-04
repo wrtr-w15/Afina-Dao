@@ -4,6 +4,7 @@ import { revokeRole } from '@/lib/discord-bot';
 import { revokeAccess } from '@/lib/notion';
 import { revokeAccess as revokeGoogleDriveAccess } from '@/lib/google-drive';
 import { sendTelegramMessageToAll } from '@/lib/telegram';
+import { userHasOtherActiveSubscription } from '@/lib/subscription-notifications';
 
 // DELETE /api/users/[id]/subscriptions/[subscriptionId] - отменить подписку
 export async function DELETE(
@@ -33,43 +34,47 @@ export async function DELETE(
 
     const sub = (rows as any[])[0];
 
+    const hasOtherActive = await userHasOtherActiveSubscription(connection, userId, subscriptionId);
+
     // Отменяем подписку
     await connection.execute(
       `UPDATE subscriptions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [subscriptionId]
     );
 
-    // Отзываем доступы при отмене
-    if (sub.discord_id && sub.discord_role_granted) {
-      try {
-        await revokeRole(sub.discord_id);
-        await connection.execute('UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?', [subscriptionId]);
-      } catch (e) {
-        console.error('Failed to revoke Discord role:', e);
-      }
-    }
-    if (sub.email && sub.notion_access_granted) {
-      try {
-        await revokeAccess(sub.email);
-        await connection.execute('UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?', [subscriptionId]);
-      } catch (e) {
-        console.error('Failed to revoke Notion access:', e);
-      }
-    }
-    if (sub.google_drive_email) {
-      try {
-        await revokeGoogleDriveAccess(sub.google_drive_email);
+    // Отзываем доступы только если у пользователя нет другой активной подписки
+    if (!hasOtherActive) {
+      if (sub.discord_id && sub.discord_role_granted) {
         try {
-          await connection.execute('UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?', [subscriptionId]);
-        } catch (e: any) {
-          if (e?.code !== 'ER_BAD_FIELD_ERROR') console.error('Failed to update google_drive_access_granted:', e);
+          await revokeRole(sub.discord_id);
+          await connection.execute('UPDATE subscriptions SET discord_role_granted = FALSE WHERE id = ?', [subscriptionId]);
+        } catch (e) {
+          console.error('Failed to revoke Discord role:', e);
         }
-      } catch (e) {
-        console.error('Failed to revoke Google Drive access:', e);
+      }
+      if (sub.email && sub.notion_access_granted) {
+        try {
+          await revokeAccess(sub.email);
+          await connection.execute('UPDATE subscriptions SET notion_access_granted = FALSE WHERE id = ?', [subscriptionId]);
+        } catch (e) {
+          console.error('Failed to revoke Notion access:', e);
+        }
+      }
+      if (sub.google_drive_email) {
+        try {
+          await revokeGoogleDriveAccess(sub.google_drive_email);
+          try {
+            await connection.execute('UPDATE subscriptions SET google_drive_access_granted = FALSE WHERE id = ?', [subscriptionId]);
+          } catch (e: any) {
+            if (e?.code !== 'ER_BAD_FIELD_ERROR') console.error('Failed to update google_drive_access_granted:', e);
+          }
+        } catch (e) {
+          console.error('Failed to revoke Google Drive access:', e);
+        }
       }
     }
 
-    // Уведомление в 2FA: подписка отменена, данные и почта для отзыва Notion
+    // Уведомление в 2FA: подписка отменена
     try {
       let tariffName = '';
       if (sub.tariff_id) {
@@ -78,6 +83,7 @@ export async function DELETE(
       }
       const userInfo = sub.telegram_username ? `@${sub.telegram_username}` : sub.telegram_first_name || `ID: ${sub.telegram_id || 'N/A'}`;
       const endDateStr = sub.end_date ? new Date(sub.end_date).toLocaleDateString('ru-RU') : '—';
+      const skipNote = hasOtherActive ? '\n\n_У пользователя есть другая активная подписка — доступы не снимались._' : '';
       const adminMessage = `
 🔄 *Подписка отменена (админ/API)*
 
@@ -90,7 +96,7 @@ export async function DELETE(
 
 *Email (Notion) — отозвать доступ вручную:* ${sub.email ? `\`${sub.email}\`` : '—'}
 *Email (Google Drive):* ${sub.google_drive_email ? `\`${sub.google_drive_email}\`` : '—'}
-*Discord ID:* ${sub.discord_id ? `\`${sub.discord_id}\`` : '—'}
+*Discord ID:* ${sub.discord_id ? `\`${sub.discord_id}\`` : '—'}${skipNote}
       `.trim();
       await sendTelegramMessageToAll(adminMessage);
     } catch (e) {
