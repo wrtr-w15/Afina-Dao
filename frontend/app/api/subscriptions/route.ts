@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/database';
+import { addMonths } from '@/lib/utils';
 import crypto from 'crypto';
 
 // Проверка и создание таблиц
@@ -246,7 +247,7 @@ export async function POST(request: NextRequest) {
         endDate = new Date(now.getTime() + tariff.duration_days * 24 * 60 * 60 * 1000);
       }
     } else {
-      endDate.setMonth(endDate.getMonth() + periodMonths);
+      endDate = addMonths(now, Math.max(1, Math.min(120, Math.floor(periodMonths))));
     }
 
     // Если есть указанная дата окончания, используем её

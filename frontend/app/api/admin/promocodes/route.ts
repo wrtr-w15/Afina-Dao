@@ -64,6 +64,11 @@ async function ensureTables() {
   } catch (e: any) {
     if (!e.message?.includes('Duplicate column name')) throw e;
   }
+  try {
+    await connection.execute(`ALTER TABLE promocodes ADD COLUMN override_tariff_id VARCHAR(36) NULL COMMENT 'При применении промокода подписка оформляется на этот тариф'`);
+  } catch (e: any) {
+    if (!e.message?.includes('Duplicate column name')) throw e;
+  }
   
   // Таблица использований промокодов
   await connection.execute(`
@@ -133,6 +138,7 @@ export async function POST(request: NextRequest) {
       allowed_users = [],
       allowed_tariff_ids = null,
       extra_days = null,
+      override_tariff_id = null,
       is_active = true,
       valid_from = null,
       valid_until = null
@@ -146,31 +152,34 @@ export async function POST(request: NextRequest) {
     }
     
     if (discount_type === 'percent') {
-      if (discount_percent === null || discount_percent === undefined) {
-        return NextResponse.json(
-          { error: 'discount_percent is required for percent discount type' },
-          { status: 400 }
-        );
-      }
-      if (discount_percent < 0 || discount_percent > 100) {
+      const percent = discount_percent === null || discount_percent === undefined ? 0 : Number(discount_percent);
+      if (percent < 0 || percent > 100) {
         return NextResponse.json(
           { error: 'Discount percent must be between 0 and 100' },
           { status: 400 }
         );
       }
     } else if (discount_type === 'fixed') {
-      if (discount_amount === null || discount_amount === undefined) {
+      const amount = discount_amount === null || discount_amount === undefined ? 0 : Number(discount_amount);
+      if (amount < 0) {
         return NextResponse.json(
-          { error: 'discount_amount is required for fixed discount type' },
+          { error: 'Discount amount cannot be negative' },
           { status: 400 }
         );
       }
-      if (discount_amount <= 0) {
-        return NextResponse.json(
-          { error: 'Discount amount must be greater than 0' },
-          { status: 400 }
-        );
-      }
+    }
+
+    // Промокод должен иметь хотя бы один эффект: скидка, доп. дни или смена тарифа
+    const hasDiscount = discount_type === 'percent'
+      ? (discount_percent != null && Number(discount_percent) > 0)
+      : (discount_amount != null && Number(discount_amount) > 0);
+    const hasExtraDays = extra_days && typeof extra_days === 'object' && !Array.isArray(extra_days) && Object.keys(extra_days).length > 0;
+    const hasOverrideTariff = override_tariff_id && String(override_tariff_id).trim() !== '';
+    if (!hasDiscount && !hasExtraDays && !hasOverrideTariff) {
+      return NextResponse.json(
+        { error: 'Promocode must have at least one effect: discount > 0, extra days, or override tariff' },
+        { status: 400 }
+      );
     }
     
     if (type === 'personal' && (!Array.isArray(allowed_users) || allowed_users.length === 0)) {
@@ -255,10 +264,13 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    const overrideTariffIdValue = override_tariff_id && String(override_tariff_id).trim() ? String(override_tariff_id).trim() : null;
+    const discountPercentValue = discount_percent != null && discount_percent !== '' ? Number(discount_percent) : 0;
+    const discountAmountValue = discount_amount != null && discount_amount !== '' ? Number(discount_amount) : 0;
     await connection.execute(
-      `INSERT INTO promocodes (id, code, type, discount_type, discount_percent, discount_amount, max_uses, allowed_users, allowed_tariff_ids, extra_days, is_active, valid_from, valid_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, code.toUpperCase().trim(), type, discount_type, discount_percent, discount_amount, max_uses, allowedUsersJson, allowedTariffIdsJson, extraDaysJson, is_active, validFromDate, validUntilDate]
+      `INSERT INTO promocodes (id, code, type, discount_type, discount_percent, discount_amount, max_uses, allowed_users, allowed_tariff_ids, extra_days, override_tariff_id, is_active, valid_from, valid_until)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, code.toUpperCase().trim(), type, discount_type, discountPercentValue, discountAmountValue, max_uses, allowedUsersJson, allowedTariffIdsJson, extraDaysJson, overrideTariffIdValue, is_active, validFromDate, validUntilDate]
     );
     
     return NextResponse.json({ success: true, id });
@@ -309,7 +321,8 @@ export async function PUT(request: NextRequest) {
       updateValues.push(updates.discount_type);
     }
     if (updates.discount_percent !== undefined) {
-      if (updates.discount_percent !== null && (updates.discount_percent < 0 || updates.discount_percent > 100)) {
+      const percent = updates.discount_percent === null ? 0 : Number(updates.discount_percent);
+      if (percent < 0 || percent > 100) {
         return NextResponse.json(
           { error: 'Discount percent must be between 0 and 100' },
           { status: 400 }
@@ -319,9 +332,10 @@ export async function PUT(request: NextRequest) {
       updateValues.push(updates.discount_percent);
     }
     if (updates.discount_amount !== undefined) {
-      if (updates.discount_amount !== null && updates.discount_amount <= 0) {
+      const amount = updates.discount_amount === null ? 0 : Number(updates.discount_amount);
+      if (amount < 0) {
         return NextResponse.json(
-          { error: 'Discount amount must be greater than 0' },
+          { error: 'Discount amount cannot be negative' },
           { status: 400 }
         );
       }
@@ -411,6 +425,12 @@ export async function PUT(request: NextRequest) {
       }
       updateFields.push('extra_days = ?');
       updateValues.push(extraDaysJson);
+    }
+    if (updates.override_tariff_id !== undefined) {
+      const val = updates.override_tariff_id;
+      const overrideTariffIdValue = (val !== null && val !== undefined && String(val).trim() !== '') ? String(val).trim() : null;
+      updateFields.push('override_tariff_id = ?');
+      updateValues.push(overrideTariffIdValue);
     }
     
     // Проверка что valid_from < valid_until если оба указаны

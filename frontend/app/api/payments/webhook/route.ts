@@ -4,6 +4,7 @@ import { grantRole } from '@/lib/discord-bot';
 import { grantAccess } from '@/lib/notion';
 import { sendMessage } from '@/lib/telegram-bot';
 import { sendTelegramMessageToAll } from '@/lib/telegram';
+import { addMonths } from '@/lib/utils';
 import crypto from 'crypto';
 
 // POST /api/payments/webhook - вебхук от платёжной системы
@@ -94,21 +95,34 @@ async function handlePaymentSuccess(connection: any, data: any): Promise<void> {
     [payment.id]
   );
 
-  // Активируем подписку
+  // Активируем подписку на выбранный срок (period_months из подписки)
   const now = new Date();
   const [subscription] = await connection.execute(
     'SELECT period_months FROM subscriptions WHERE id = ?',
     [payment.sub_id]
   );
-  
-  const periodMonths = (subscription as any[])[0]?.period_months || 1;
-  const endDate = new Date(now);
-  endDate.setMonth(endDate.getMonth() + periodMonths);
+  const periodMonths = Math.max(1, Math.min(120, Math.floor(Number((subscription as any[])[0]?.period_months) || 1)));
+  const endDate = addMonths(now, periodMonths);
 
   await connection.execute(
     `UPDATE subscriptions SET status = 'active', start_date = ?, end_date = ?, updated_at = NOW() WHERE id = ?`,
     [now, endDate, payment.sub_id]
   );
+
+  // Один актуальный тариф у пользователя: при активации подписки выставляем только тариф этой подписки
+  try {
+    const [subRows] = await connection.execute('SELECT tariff_id FROM subscriptions WHERE id = ?', [payment.sub_id]);
+    const tariffId = (subRows as any[])[0]?.tariff_id;
+    if (tariffId) {
+      await connection.execute('DELETE FROM user_available_tariffs WHERE user_id = ?', [payment.user_id]);
+      await connection.execute(
+        'INSERT INTO user_available_tariffs (id, user_id, tariff_id) VALUES (?, ?, ?)',
+        [crypto.randomUUID(), payment.user_id, tariffId]
+      );
+    }
+  } catch (e) {
+    console.error('Error syncing user_available_tariffs:', e);
+  }
 
   // Выдаём доступы
   let discordGranted = false;

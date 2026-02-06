@@ -277,11 +277,6 @@ export default function PaymentsPage() {
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-white font-medium">
-                            {formatAmount(payment.amount)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
                           <span className="text-gray-300">
                             {payment.paymentMethod || '—'}
                           </span>

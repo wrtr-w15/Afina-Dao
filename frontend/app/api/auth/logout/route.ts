@@ -3,9 +3,15 @@ import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
   try {
-    // Удаляем сессионную cookie
     const cookieStore = await cookies();
-    cookieStore.delete('admin-session');
+    // Сбрасываем cookie с теми же path и domain для надёжного удаления (OWASP A07)
+    cookieStore.set('admin-session', '', {
+      path: '/',
+      maxAge: 0,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
 
     return NextResponse.json({ 
       success: true,

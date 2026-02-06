@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/database';
+import { isValidUUID } from '@/lib/validation';
 
 export type BlocklistType = 'telegram_subscription' | 'email' | 'discord';
 
@@ -107,8 +108,8 @@ export async function DELETE(request: NextRequest) {
   if (authResult) return authResult;
 
   const id = request.nextUrl.searchParams.get('id');
-  if (!id) {
-    return NextResponse.json({ error: 'id is required' }, { status: 400 });
+  if (!id || !isValidUUID(id)) {
+    return NextResponse.json({ error: 'Valid id (UUID) is required' }, { status: 400 });
   }
 
   const connection = await getConnection();

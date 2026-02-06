@@ -32,6 +32,8 @@ interface UserDetail {
   updatedAt: string;
   availableTariffIds: string[];
   availableTariffs: { tariffId: string; tariffName: string }[];
+  actualTariffId?: string | null;
+  actualTariffName?: string | null;
   subscriptions: any[];
   payments: any[];
 }
@@ -58,8 +60,10 @@ export default function UserEditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSub, setSavingSub] = useState<string | null>(null);
+  const [savingActualTariff, setSavingActualTariff] = useState(false);
   const [refreshingAccesses, setRefreshingAccesses] = useState(false);
-  const [selectedTariffId, setSelectedTariffId] = useState<string | null>(null);
+  /** Выбранный фактический тариф (для активной подписки): '' = бесплатная, иначе tariff id */
+  const [selectedActualTariffId, setSelectedActualTariffId] = useState<string>('');
   const [formUser, setFormUser] = useState<UserForm>({
     telegramId: '',
     telegramUsername: '',
@@ -84,13 +88,16 @@ export default function UserEditPage() {
       const res = await fetch(`/api/users/${id}`);
       if (!res.ok) {
         if (res.status === 404) {
+          setUser(null);
           toast.showError('Пользователь не найден');
+        } else {
+          toast.showError('Ошибка загрузки');
         }
         return;
       }
       const data = await res.json();
       setUser(data);
-      setSelectedTariffId((data.availableTariffIds && data.availableTariffIds[0]) ? data.availableTariffIds[0] : null);
+      setSelectedActualTariffId(data.actualTariffId ?? '');
       setFormUser({
         telegramId: data.telegramId != null ? String(data.telegramId) : '',
         telegramUsername: data.telegramUsername || '',
@@ -162,26 +169,30 @@ export default function UserEditPage() {
     }
   };
 
-  const handleSaveTariffs = async () => {
-    if (!user) return;
-    setSaving(true);
+  /** Активная подписка с самой поздней датой окончания (та же, что для фактического тарифа) */
+  const activeSubscription = user?.subscriptions
+    ?.filter((s: any) => s.status === 'active' && new Date(s.endDate) > new Date())
+    ?.sort((a: any, b: any) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())[0];
+  const handleSaveActualTariff = async () => {
+    if (!user || !activeSubscription) return;
+    setSavingActualTariff(true);
     try {
-      const res = await fetch(`/api/users/${id}`, {
+      const res = await fetch(`/api/users/${id}/subscriptions/${activeSubscription.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ availableTariffIds: selectedTariffId ? [selectedTariffId] : [] })
+        body: JSON.stringify({ tariffId: selectedActualTariffId || null })
       });
       const data = await res.json();
       if (!res.ok) {
         toast.showError(data.error || 'Ошибка сохранения');
         return;
       }
-      toast.showSuccess('Тариф для бота сохранён');
-      setUser(prev => prev ? { ...prev, availableTariffIds: selectedTariffId ? [selectedTariffId] : [] } : null);
+      toast.showSuccess('Фактический тариф обновлён');
+      await loadUser();
     } catch (e) {
       toast.showError('Ошибка сохранения');
     } finally {
-      setSaving(false);
+      setSavingActualTariff(false);
     }
   };
 
@@ -289,7 +300,7 @@ export default function UserEditPage() {
     return (
       <AdminLayout title="Пользователь">
         <div className="flex items-center justify-center py-24 text-gray-400">
-          {loading ? 'Загрузка...' : error || 'Пользователь не найден'}
+          {loading ? 'Загрузка...' : 'Пользователь не найден'}
         </div>
       </AdminLayout>
     );
@@ -429,61 +440,43 @@ export default function UserEditPage() {
               <Bot className="h-5 w-5 text-indigo-400" />
               Тариф в Telegram-боте
             </h2>
-            <p className="text-sm text-gray-400 mb-4">
-              Выберите один тариф, который этот пользователь будет видеть при оплате в боте. Показаны все тарифы, включая неактивные. Если выбран «По умолчанию» — показывается тариф по умолчанию.
-            </p>
-            {tariffs.length === 0 ? (
-              <p className="text-gray-500 text-sm">Нет тарифов. Создайте тарифы в разделе «Тарифы».</p>
-            ) : (
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.07] cursor-pointer transition-all">
-                  <input
-                    type="radio"
-                    name="bot-tariff"
-                    checked={selectedTariffId === null}
-                    onChange={() => setSelectedTariffId(null)}
-                    className="w-4 h-4 border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
-                  />
-                  <span className="text-white font-medium">По умолчанию</span>
-                </label>
-                {tariffs.map(tariff => (
-                  <label
-                    key={tariff.id}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.07] cursor-pointer transition-all"
+            {/* Фактический тариф по активной подписке — можно менять вручную */}
+            <div className="mb-4 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Фактический тариф (по активной подписке)</p>
+              {activeSubscription ? (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2">
+                  <select
+                    value={selectedActualTariffId}
+                    onChange={(e) => setSelectedActualTariffId(e.target.value)}
+                    className="flex-1 min-w-0 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
                   >
-                    <input
-                      type="radio"
-                      name="bot-tariff"
-                      checked={selectedTariffId === tariff.id}
-                      onChange={() => setSelectedTariffId(tariff.id)}
-                      className="w-4 h-4 border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
-                    />
-                    <span className="text-white font-medium">{tariff.name}</span>
-                    {!tariff.isActive && (
-                      <span className="text-xs px-2 py-0.5 rounded bg-gray-500/30 text-gray-400">неактив.</span>
-                    )}
-                    {tariff.prices?.length ? (
-                      <span className="text-gray-500 text-sm">
-                        {tariff.prices.length} период(ов)
-                      </span>
-                    ) : null}
-                  </label>
-                ))}
-              </div>
-            )}
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                onClick={handleSaveTariffs}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                <Save className="h-4 w-4" />
-                {saving ? 'Сохранение...' : 'Сохранить тариф для бота'}
-              </button>
-              {selectedTariffId === null && (
-                <span className="text-gray-500 text-sm">Будет использоваться тариф по умолчанию</span>
+                    <option value="">Бесплатная подписка</option>
+                    {tariffs.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {!t.isActive ? ' (неактив.)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleSaveActualTariff}
+                    disabled={savingActualTariff}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 shrink-0"
+                  >
+                    <Save className="h-4 w-4" />
+                    {savingActualTariff ? 'Сохранение...' : 'Сохранить фактический тариф'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-lg font-semibold text-white mt-1">
+                  {user.actualTariffName ?? '—'}
+                </p>
               )}
             </div>
+            {activeSubscription && tariffs.length === 0 && (
+              <p className="text-gray-500 text-sm mt-2">Нет тарифов. Создайте тарифы в разделе «Тарифы», чтобы выбрать фактический тариф.</p>
+            )}
           </div>
         </div>
 

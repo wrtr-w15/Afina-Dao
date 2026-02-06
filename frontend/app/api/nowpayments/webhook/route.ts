@@ -5,7 +5,9 @@ import { grantRole } from '@/lib/discord-bot';
 import { grantAccess } from '@/lib/notion';
 import { grantAccess as grantGoogleDriveAccess } from '@/lib/google-drive';
 import { sendMessage } from '@/lib/telegram-bot';
+import { getSuccessKeyboard } from '@/lib/telegram-bot/keyboards';
 import { sendTelegramMessageToAll } from '@/lib/telegram';
+import { addMonths } from '@/lib/utils';
 import crypto from 'crypto';
 
 // Проверка подписи IPN
@@ -281,6 +283,26 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
     ]
   );
 
+  // Записываем использование промокода только после успешной оплаты (счётчик и extra_days будут учтены ниже)
+  const promocodeId = payment.promocode_id || null;
+  if (promocodeId && payment.user_id && payment.sub_id) {
+    try {
+      const originalAmount = Number(payment.promocode_original_amount) || 0;
+      const discountAmount = Number(payment.promocode_discount_amount) || 0;
+      await connection.execute(
+        `INSERT INTO promocode_usages (id, promocode_id, user_id, subscription_id, amount, discount_amount) VALUES (?, ?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), promocodeId, payment.user_id, payment.sub_id, originalAmount, discountAmount]
+      );
+      await connection.execute(
+        `UPDATE promocodes SET used_count = used_count + 1 WHERE id = ?`,
+        [promocodeId]
+      );
+      console.log(`[NOWPayments Webhook] Recorded promocode usage for payment ${payment.id}, promocode ${promocodeId}`);
+    } catch (e) {
+      console.error('Error recording promocode usage in webhook:', e);
+    }
+  }
+
   // Активируем подписку или продлеваем её
   const now = new Date();
   let providerData: Record<string, unknown> = {};
@@ -289,14 +311,17 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
       providerData = typeof payment.provider_data === 'string' ? JSON.parse(payment.provider_data) : payment.provider_data as Record<string, unknown>;
     } catch (_) {}
   }
-  const periodMonths = (providerData as any).period_months != null ? Number((providerData as any).period_months) : (payment.period_months || 1);
+  // Срок берём из выбранного при оплате периода: provider_data (текущий платёж) или подписка (при покупке)
+  const periodMonths = (providerData as any).period_months != null
+    ? Number((providerData as any).period_months)
+    : (payment.period_months != null ? Number(payment.period_months) : 1);
+  const periodMonthsClamped = Math.max(1, Math.min(120, Math.floor(periodMonths))); // 1–120 месяцев
   // При продлении: новая дата окончания = от текущей даты окончания подписки (или от сегодня, если уже истекла)
   const baseDate =
     isRenewal && currentEndDate
       ? new Date(Math.max(currentEndDate.getTime(), now.getTime()))
       : now;
-  const endDate = new Date(baseDate);
-  endDate.setMonth(endDate.getMonth() + periodMonths);
+  const endDate = addMonths(new Date(baseDate), periodMonthsClamped);
 
   // Получаем информацию о промокоде и дополнительные дни, если есть
   let extraDays = 0;
@@ -358,6 +383,21 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
        WHERE id = ?`,
       [now, endDate, payment.sub_id]
     );
+  }
+
+  // Один актуальный тариф у пользователя: при активации/продлении выставляем только тариф этой подписки (старый не учитывается)
+  try {
+    const [subRows] = await connection.execute('SELECT tariff_id FROM subscriptions WHERE id = ?', [payment.sub_id]);
+    const tariffId = (subRows as any[])[0]?.tariff_id;
+    if (tariffId) {
+      await connection.execute('DELETE FROM user_available_tariffs WHERE user_id = ?', [payment.user_id]);
+      await connection.execute(
+        'INSERT INTO user_available_tariffs (id, user_id, tariff_id) VALUES (?, ?, ?)',
+        [crypto.randomUUID(), payment.user_id, tariffId]
+      );
+    }
+  } catch (e) {
+    console.error('[NOWPayments Webhook] Error syncing user_available_tariffs:', e);
   }
 
   // Выдаём доступы
@@ -476,7 +516,8 @@ export async function handlePaymentSuccess(connection: any, payment: any, ipnDat
       const discordButton = discordInvite ? `\n\n🎮 <a href="${discordInvite}">Перейти в Discord</a>` : '';
 
       const userMessage = `🎉 <b>Оплата прошла успешно!</b>\n\nВаша подписка активирована до <b>${endDate.toLocaleDateString('ru-RU')}</b>.\n\nСумма: <b>${ipnData.actually_paid} ${(ipnData.pay_currency || '').toUpperCase()}</b>${accessInfo}${discordButton}`;
-      await sendMessage(telegramId, userMessage);
+      const successKeyboard = getSuccessKeyboard(process.env.DISCORD_INVITE_URL);
+      await sendMessage(telegramId, userMessage, successKeyboard);
       console.log('[NOWPayments Webhook] User notification sent to telegram_id=%s', telegramId);
     } catch (e) {
       console.error('[NOWPayments Webhook] Failed to send Telegram notification:', e);

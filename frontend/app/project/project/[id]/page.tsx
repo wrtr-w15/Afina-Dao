@@ -63,7 +63,7 @@ export default function ProjectPage() {
     if (!project?.blocks) return;
 
     const handleScroll = () => {
-      const blocks = project.blocks.map((_, index) => 
+      const blocks = (project.blocks ?? []).map((_, index) => 
         document.getElementById(`block-${index}`)
       ).filter(Boolean);
 

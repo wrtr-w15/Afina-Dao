@@ -20,9 +20,10 @@ import {
   Link2,
   Image,
   Ticket,
-  ShieldBan
+  ShieldBan,
+  LogIn
 } from 'lucide-react';
-import { logoutAdmin, removeAdminTokenFromCookies } from '../../lib/auth';
+import { logoutAdmin, setAdminSessionFlag } from '../../lib/auth';
 
 interface AdminSidebarProps {
   isCollapsed?: boolean;
@@ -37,6 +38,7 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
 
   useEffect(() => {
     setMounted(true);
+    setAdminSessionFlag(); // мы на /admin — доступ уже проверен middleware по cookie
   }, []);
 
   if (!mounted) {
@@ -47,9 +49,7 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
     if (onLogout) {
       onLogout();
     } else {
-      logoutAdmin();
-      removeAdminTokenFromCookies();
-      router.push('/admin/login');
+      logoutAdmin('/admin/login');
     }
   };
 
@@ -144,6 +144,13 @@ export default function AdminSidebar({ isCollapsed = false, onToggle, onLogout }
       icon: ShieldBan,
       path: '/admin/blocklist',
       color: 'from-amber-500 to-orange-500'
+    },
+    {
+      id: 'login-logs',
+      label: 'Логи входов',
+      icon: LogIn,
+      path: '/admin/login-logs',
+      color: 'from-indigo-500 to-blue-500'
     },
     {
       id: 'settings',

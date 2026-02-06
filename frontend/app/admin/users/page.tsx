@@ -62,6 +62,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [subscriptionFilter, setSubscriptionFilter] = useState<string>('');
   const [stats, setStats] = useState({ total: 0, withActive: 0, withDiscord: 0, withEmail: 0 });
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 0 });
@@ -108,7 +109,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadUsers();
-  }, [subscriptionFilter, pagination.page]);
+  }, [subscriptionFilter, pagination.page, appliedSearch]);
 
   const loadTariffs = async () => {
     try {
@@ -127,12 +128,21 @@ export default function UsersPage() {
       setLoading(true);
       const params = new URLSearchParams();
       if (subscriptionFilter) params.set('hasSubscription', subscriptionFilter);
+      if (appliedSearch.trim()) params.set('search', appliedSearch.trim());
       params.set('page', pagination.page.toString());
       params.set('limit', pagination.limit.toString());
 
       const response = await fetch(`/api/users?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch');
-      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          toast.showError('Сессия истекла. Войдите снова.');
+          router.push('/admin/login');
+          return;
+        }
+        throw new Error((data as { error?: string }).error || `Ошибка ${response.status}`);
+      }
+
       const data = await response.json();
       setUsers(data.users || []);
       setPagination(prev => ({ ...prev, ...data.pagination }));
@@ -146,6 +156,7 @@ export default function UsersPage() {
       });
     } catch (error) {
       console.error('Error loading users:', error);
+      toast.showError(error instanceof Error ? error.message : 'Не удалось загрузить список пользователей');
       setUsers([]);
     } finally {
       setLoading(false);
@@ -283,17 +294,24 @@ export default function UsersPage() {
     setSelectedPrice(null);
   };
 
-  const filteredUsers = users.filter(user => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      user.telegramUsername?.toLowerCase().includes(query) ||
-      user.telegramFirstName?.toLowerCase().includes(query) ||
-      user.discordId?.includes(query) ||
-      user.email?.toLowerCase().includes(query) ||
-      user.telegramId?.toString().includes(query)
-    );
-  });
+  const applySearch = () => {
+    setAppliedSearch(searchQuery.trim());
+    setPagination(p => ({ ...p, page: 1 }));
+  };
+
+  const filteredUsers = appliedSearch.trim()
+    ? users
+    : users.filter(user => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        return (
+          user.telegramUsername?.toLowerCase().includes(query) ||
+          user.telegramFirstName?.toLowerCase().includes(query) ||
+          user.discordId?.includes(query) ||
+          user.email?.toLowerCase().includes(query) ||
+          user.telegramId?.toString().includes(query)
+        );
+      });
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return '—';
@@ -374,7 +392,10 @@ export default function UsersPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
+        <form
+          className="flex flex-col sm:flex-row gap-4"
+          onSubmit={(e) => { e.preventDefault(); applySearch(); }}
+        >
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
             <input
@@ -394,7 +415,25 @@ export default function UsersPage() {
             <option value="true">С активной подпиской</option>
             <option value="false">Без подписки</option>
           </select>
-        </div>
+          <button
+            type="submit"
+            className="px-4 py-2.5 rounded-xl bg-indigo-500/80 text-white hover:bg-indigo-500 transition-all text-sm"
+          >
+            Найти
+          </button>
+        </form>
+        {appliedSearch && (
+          <p className="text-sm text-gray-400">
+            По запросу «{appliedSearch}» найдено: {pagination.total}
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(''); setAppliedSearch(''); }}
+              className="ml-2 text-indigo-400 hover:underline"
+            >
+              Сбросить
+            </button>
+          </p>
+        )}
 
         {/* Table */}
         <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
@@ -405,6 +444,7 @@ export default function UsersPage() {
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Telegram</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Discord</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Тариф</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Подписки</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Регистрация</th>
                   <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Действия</th>
@@ -413,13 +453,13 @@ export default function UsersPage() {
               <tbody className="divide-y divide-white/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
                       Загрузка...
                     </td>
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
                       Пользователи не найдены
                     </td>
                   </tr>
@@ -453,6 +493,11 @@ export default function UsersPage() {
                       <td className="px-6 py-4">
                         <span className={user.email ? 'text-white' : 'text-gray-500'}>
                           {user.email || '—'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={user.tariffName ? 'text-white' : 'text-gray-500'}>
+                          {user.tariffName || '—'}
                         </span>
                       </td>
                       <td className="px-6 py-4">

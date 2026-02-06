@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '../../../../../lib/database';
 import { PricingCalculation } from '../../../../../types/pricing';
+import { checkAdminAuth } from '@/lib/security-middleware';
 
 // GET /api/admin/pricing/calculate?projects=5 - рассчитать цену для определенного количества проектов
 export async function GET(request: NextRequest) {
+  const authResult = await checkAdminAuth(request);
+  if (authResult) return authResult;
+
   const { searchParams } = new URL(request.url);
   const projectCount = parseInt(searchParams.get('projects') || '1');
   

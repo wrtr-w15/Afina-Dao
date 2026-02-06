@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processUpdate, setWebhook, getMe } from '@/lib/telegram-bot';
 import { preloadAllTexts } from '@/lib/telegram-bot/get-text';
+import { applyRateLimit } from '@/lib/security-middleware';
+
+/** Лимит запросов на webhook бота в минуту (на IP) — выдерживает нагрузку и защищает от флуда */
+const BOT_WEBHOOK_RATE_LIMIT = 120;
+const BOT_WEBHOOK_WINDOW_MS = 60 * 1000;
+/** Максимальный размер тела update от Telegram (обычно < 10 KB) */
+const BOT_WEBHOOK_BODY_MAX_BYTES = 512 * 1024;
 
 // Предзагрузка текстов при первом запросе
 let textsPreloaded = false;
@@ -8,17 +15,28 @@ let textsPreloaded = false;
 // POST /api/telegram/bot - webhook для Telegram
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit: защита от флуда и DoS (выдерживает до 2 req/s на IP)
+    const rateLimitResult = applyRateLimit(request, BOT_WEBHOOK_RATE_LIMIT, BOT_WEBHOOK_WINDOW_MS);
+    if (rateLimitResult) {
+      return rateLimitResult;
+    }
+
+    // Ограничение размера тела (Telegram update обычно маленький)
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > BOT_WEBHOOK_BODY_MAX_BYTES) {
+      return NextResponse.json({ ok: false }, { status: 413 });
+    }
+
     // Предзагружаем тексты при первом запросе
     if (!textsPreloaded) {
       preloadAllTexts().catch(console.error);
       textsPreloaded = true;
     }
 
-    // В dev режиме пропускаем проверку секрета для polling
     const secretToken = request.headers.get('x-telegram-bot-api-secret-token');
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     const isDev = process.env.NODE_ENV === 'development';
-    
+
     if (!isDev && webhookSecret && webhookSecret.length > 10 && secretToken !== webhookSecret) {
       return NextResponse.json({ ok: false }, { status: 401 });
     }
@@ -37,11 +55,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/telegram/bot - информация и настройка
+// GET /api/telegram/bot - информация и настройка (setup/info/webhook только для админа)
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
   const customUrl = searchParams.get('url');
+
+  if (action === 'setup' || action === 'info' || action === 'webhook') {
+    const { checkAdminAuth } = await import('@/lib/security-middleware');
+    const authResult = await checkAdminAuth(request);
+    if (authResult) return authResult;
+  }
 
   try {
     if (action === 'setup') {

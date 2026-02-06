@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { normalizeErrorMessage } from '@/lib/error-utils';
 import {
   Image,
   Upload,

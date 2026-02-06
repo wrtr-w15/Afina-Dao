@@ -398,14 +398,14 @@ export default function GridScan({
       const buf = new Array(MAX_SCANS).fill(0);
       for (let i = 0; i < arr.length && i < MAX_SCANS; i++) buf[i] = arr[i];
       u.uScanStarts.value = buf;
-      (u.uScanCount as { value: number }).value = arr.length;
+      (u.uScanCount as unknown as { value: number }).value = arr.length;
     }
   };
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    let leaveTimer: ReturnType<typeof setTimeout> | null = null;
+    let leaveTimer: number | null = null;
     const onMove = (e: MouseEvent) => {
       if (leaveTimer) {
         clearTimeout(leaveTimer);
@@ -643,8 +643,8 @@ export default function GridScan({
     if (m) {
       const u = m.uniforms as Record<string, { value: unknown }>;
       (u.uLineThickness as { value: number }).value = lineThickness;
-      (u.uLinesColor.value as THREE.Vector3).copy(srgbColor(linesColor));
-      (u.uScanColor.value as THREE.Vector3).copy(srgbColor(scanColor));
+      (u.uLinesColor.value as THREE.Color).copy(srgbColor(linesColor));
+      (u.uScanColor.value as THREE.Color).copy(srgbColor(scanColor));
       (u.uGridScale as { value: number }).value = gridScale;
       (u.uLineStyle as { value: number }).value = lineStyle === 'dashed' ? 1 : lineStyle === 'dotted' ? 2 : 0;
       (u.uLineJitter as { value: number }).value = Math.max(0, Math.min(1, lineJitter || 0));

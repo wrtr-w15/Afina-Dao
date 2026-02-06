@@ -42,9 +42,19 @@ export function sanitizeString(input: string): string {
   if (typeof input !== 'string') {
     return '';
   }
-  
+
   // Удаляем нулевые байты
   return input.replace(/\0/g, '');
+}
+
+/**
+ * Безопасная строка для логов (OWASP A09): обрезает длину, убирает переносы.
+ * Не логируйте пароли и токены — только идентификаторы (IP, id, path).
+ */
+export function sanitizeForLog(value: unknown, maxLength: number = 100): string {
+  if (value === null || value === undefined) return '';
+  const s = String(value).replace(/[\r\n]/g, ' ').trim();
+  return s.length > maxLength ? s.slice(0, maxLength) + '…' : s;
 }
 
 /**

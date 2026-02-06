@@ -12,6 +12,9 @@ export async function POST(
   if (authResult) return authResult;
 
   const { id: userId } = await params;
+  if (!userId || typeof userId !== 'string' || userId.length > 64 || /[^\w\-]/.test(userId)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+  }
   const data = await request.json();
   const connection = await getConnection();
 

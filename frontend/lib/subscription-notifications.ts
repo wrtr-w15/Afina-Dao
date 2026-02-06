@@ -40,9 +40,9 @@ export async function getActualTariffIds(connection: any): Promise<{ ids: string
           `SELECT id FROM tariffs WHERE is_active = 1 AND is_archived = 0 AND is_custom = 0 ORDER BY sort_order ASC, created_at DESC LIMIT 1`
         );
         if ((defaultTariff as any[]).length === 0) return null;
-        actualTariffId = (defaultTariff as any[])[0].id;
+        actualTariffId = (defaultTariff as any[])[0].id ?? null;
       }
-      ids = [actualTariffId];
+      if (actualTariffId) ids = [actualTariffId];
     }
     return { ids, daysToPay };
   } catch {

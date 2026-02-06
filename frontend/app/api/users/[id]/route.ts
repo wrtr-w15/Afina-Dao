@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/database';
 import crypto from 'crypto';
+function validateUserId(id: string): NextResponse | null {
+  if (!id || typeof id !== 'string' || id.length > 64 || /[^\w\-]/.test(id)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+  }
+  return null;
+}
 
 // GET /api/users/[id] - детали пользователя
 export async function GET(
@@ -12,6 +18,8 @@ export async function GET(
   if (authResult) return authResult;
 
   const { id } = await params;
+  const idError = validateUserId(id);
+  if (idError) return idError;
   const connection = await getConnection();
 
   try {
@@ -84,6 +92,31 @@ export async function GET(
       // Таблица может не существовать
     }
 
+    // Фактический тариф по активной подписке (тот, что на практике)
+    let actualTariffId: string | null = null;
+    let actualTariffName: string | null = null;
+    try {
+      const [actRows] = await connection.execute(
+        `SELECT s.tariff_id, t.name as tariff_name 
+         FROM subscriptions s 
+         LEFT JOIN tariffs t ON t.id COLLATE utf8mb4_unicode_ci = s.tariff_id COLLATE utf8mb4_unicode_ci 
+         WHERE s.user_id COLLATE utf8mb4_unicode_ci = ? AND s.status = 'active' AND s.end_date > NOW() 
+         ORDER BY s.end_date DESC LIMIT 1`,
+        [id]
+      );
+      const act = (actRows as any[])[0];
+      if (act) {
+        if (act.tariff_id) {
+          actualTariffId = act.tariff_id;
+          actualTariffName = act.tariff_name || act.tariff_id;
+        } else {
+          actualTariffName = 'Бесплатная подписка';
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     return NextResponse.json({
       id: user.id,
       telegramId: user.telegram_id,
@@ -98,6 +131,8 @@ export async function GET(
       updatedAt: user.updated_at,
       availableTariffIds,
       availableTariffs,
+      actualTariffId,
+      actualTariffName,
       subscriptions: subscriptions.map(s => ({
         id: s.id,
         tariffId: s.tariff_id,
@@ -148,6 +183,8 @@ export async function PUT(
   if (authResult) return authResult;
 
   const { id } = await params;
+  const idError = validateUserId(id);
+  if (idError) return idError;
   const data = await request.json();
   const connection = await getConnection();
 
@@ -302,6 +339,8 @@ export async function DELETE(
   if (authResult) return authResult;
 
   const { id } = await params;
+  const idError = validateUserId(id);
+  if (idError) return idError;
   const connection = await getConnection();
 
   try {

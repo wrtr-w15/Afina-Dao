@@ -99,11 +99,10 @@ export default function AdminSettingsPage() {
         throw new Error(errorData.error || 'Failed to update');
       }
       
-      setMessage({ type: 'success', text: 'Настройки сохранены' });
-      setTimeout(() => setMessage(null), 3000);
+      toast.showSuccess('Настройки сохранены');
     } catch (error) {
       console.error('Error saving settings:', error);
-      setMessage({ type: 'error', text: 'Ошибка сохранения' });
+      toast.showError('Ошибка сохранения');
     } finally {
       setIsSaving(false);
     }

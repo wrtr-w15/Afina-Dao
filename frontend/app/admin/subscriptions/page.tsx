@@ -94,7 +94,7 @@ export default function SubscriptionsPage() {
   
   // Edit modal
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
-  const [editForm, setEditForm] = useState<EditForm>({ status: '', endDate: '', notes: '' });
+  const [editForm, setEditForm] = useState<EditForm>({ status: '', endDate: '', notes: '', isFree: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

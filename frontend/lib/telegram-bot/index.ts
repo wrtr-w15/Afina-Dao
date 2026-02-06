@@ -14,6 +14,7 @@ import {
   handleEnterPromocode,
   handlePromocodeInput,
   handleRefreshAccess,
+  handleHowToStartCommunity,
   handlePaymentHistory,
   handlePaymentHistoryPage,
   handleConfirmOrder,
@@ -187,6 +188,8 @@ async function handleCallbackQuery(callbackQuery: any): Promise<void> {
         return await handleEnterPromocode(callbackQuery);
       case 'refresh_access':
         return await handleRefreshAccess(callbackQuery);
+      case 'how_to_start_community':
+        return await handleHowToStartCommunity(callbackQuery);
       case 'payment_history': 
         return await handlePaymentHistory(callbackQuery);
       case 'help':
@@ -225,7 +228,7 @@ export async function processUpdate(update: TelegramUpdate): Promise<void> {
         const text = '🚫 Доступ с этого аккаунта запрещён. Обратитесь в поддержку.';
         await sendMessage(chatId, text);
         if (update.callback_query) {
-          await answerCallback(update.callback_query.id, 'Доступ запрещён', true);
+          await answerCallback(update.callback_query.id, 'Доступ запрещён');
         }
         return;
       }

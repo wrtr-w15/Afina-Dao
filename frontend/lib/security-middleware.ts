@@ -3,6 +3,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+/** Максимальное время жизни сессии админки: 24 часа (в секундах для cookie). */
+export const ADMIN_SESSION_MAX_AGE_SEC = 24 * 60 * 60;
 import { cookies } from 'next/headers';
 import { checkRateLimit, isValidUUID } from './validation';
 import crypto from 'crypto';
@@ -202,9 +205,8 @@ export async function checkAdminAuth(request?: NextRequest): Promise<NextRespons
       // Расшифровываем данные сессии с использованием безопасного метода
       const sessionData = decryptSessionData(adminSession.value, SESSION_SECRET);
       
-      // Проверяем, не истекла ли сессия (24 часа)
-      const maxAge = 24 * 60 * 60 * 1000;
-      if (Date.now() - sessionData.timestamp > maxAge) {
+      // Проверяем, не истекла ли сессия (максимум 24 часа)
+      if (Date.now() - sessionData.timestamp > ADMIN_SESSION_MAX_AGE_SEC * 1000) {
         return NextResponse.json(
           { error: 'Session expired' },
           { status: 401 }

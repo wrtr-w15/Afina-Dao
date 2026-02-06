@@ -100,10 +100,26 @@ export default function AdminTelegramPage() {
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastStats, setBroadcastStats] = useState<{ sent: number; failed: number; total: number } | null>(null);
   const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'with_subscription' | 'without_subscription'>('all');
+  const [broadcastTariffIds, setBroadcastTariffIds] = useState<string[]>([]);
+  const [tariffs, setTariffs] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     loadTexts();
   }, []);
+
+  useEffect(() => {
+    const loadTariffs = async () => {
+      try {
+        const res = await fetch('/api/tariffs?includeArchived=true');
+        if (!res.ok) return;
+        const data = await res.json();
+        setTariffs(data.tariffs || []);
+      } catch {
+        // ignore
+      }
+    };
+    if (showBroadcast) loadTariffs();
+  }, [showBroadcast]);
 
   const loadTexts = async () => {
     setIsLoading(true);
@@ -332,15 +348,16 @@ export default function AdminTelegramPage() {
 
         {/* Модальное окно массовой рассылки */}
         {showBroadcast && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
             <div className="absolute inset-0 bg-black/60" onClick={() => {
               setShowBroadcast(false);
               setBroadcastText('');
               setBroadcastImageUrl('');
               setBroadcastStats(null);
+              setBroadcastTariffIds([]);
             }} />
-            <div className="relative w-full max-w-2xl rounded-2xl bg-[#1a1a2e] border border-white/10 p-6 shadow-xl">
-              <div className="flex items-center justify-between mb-6">
+            <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-[#1a1a2e] border border-white/10 shadow-xl overflow-hidden">
+              <div className="flex-shrink-0 flex items-center justify-between p-6 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
                     <Send className="h-5 w-5 text-white" />
@@ -358,6 +375,7 @@ export default function AdminTelegramPage() {
                     setBroadcastImageUrl('');
                     setBroadcastStats(null);
                     setBroadcastTarget('all');
+                    setBroadcastTariffIds([]);
                   }} 
                   className="p-1 rounded text-gray-400 hover:text-white transition"
                 >
@@ -365,7 +383,7 @@ export default function AdminTelegramPage() {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Целевая аудитория <span className="text-red-400">*</span>
@@ -414,6 +432,41 @@ export default function AdminTelegramPage() {
                       </div>
                     </label>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Только по тарифам (опционально)
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Оставьте пустым — рассылка по выбранной аудитории выше. Отметьте тарифы — сообщение получат только пользователи, у которых есть подписка (в т.ч. истёкшая) с одним из этих тарифов.
+                  </p>
+                  <div className="max-h-40 overflow-y-auto rounded-xl bg-white/5 border border-white/10 p-3 space-y-2">
+                    {tariffs.length === 0 ? (
+                      <div className="text-xs text-gray-500">Загрузка тарифов...</div>
+                    ) : (
+                      tariffs.map((tariff) => (
+                        <label key={tariff.id} className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-2 rounded-lg">
+                          <input
+                            type="checkbox"
+                            checked={broadcastTariffIds.includes(tariff.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setBroadcastTariffIds(prev => [...prev, tariff.id]);
+                              } else {
+                                setBroadcastTariffIds(prev => prev.filter(id => id !== tariff.id));
+                              }
+                            }}
+                            className="w-4 h-4 text-purple-500 rounded focus:ring-purple-500 focus:ring-2"
+                          />
+                          <span className="text-sm text-white">{tariff.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  {broadcastTariffIds.length > 0 && (
+                    <p className="mt-1 text-xs text-purple-400">Выбрано тарифов: {broadcastTariffIds.length}</p>
+                  )}
                 </div>
 
                 <div>
@@ -470,8 +523,9 @@ export default function AdminTelegramPage() {
                     </div>
                   </div>
                 )}
+              </div>
 
-                <div className="flex justify-end gap-3 pt-4">
+              <div className="flex-shrink-0 flex justify-end gap-3 px-6 py-4 border-t border-white/10 bg-[#1a1a2e]">
                   <button
                     type="button"
                     onClick={() => {
@@ -479,6 +533,7 @@ export default function AdminTelegramPage() {
                       setBroadcastText('');
                       setBroadcastImageUrl('');
                       setBroadcastStats(null);
+                      setBroadcastTariffIds([]);
                     }}
                     className="px-4 py-2.5 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 transition"
                     disabled={broadcasting}
@@ -497,8 +552,11 @@ export default function AdminTelegramPage() {
                         broadcastTarget === 'all' ? 'всем пользователям' :
                         broadcastTarget === 'with_subscription' ? 'пользователям с активной подпиской' :
                         'пользователям без активной подписки';
+                      const tariffLabel = broadcastTariffIds.length > 0
+                        ? ` (только с тарифами: ${broadcastTariffIds.length})`
+                        : '';
 
-                      if (!confirm(`Отправить сообщение ${targetLabel}?\n\nТекст: ${broadcastText.substring(0, 100)}${broadcastText.length > 100 ? '...' : ''}\n\nЭто действие нельзя отменить.`)) {
+                      if (!confirm(`Отправить сообщение ${targetLabel}${tariffLabel}?\n\nТекст: ${broadcastText.substring(0, 100)}${broadcastText.length > 100 ? '...' : ''}\n\nЭто действие нельзя отменить.`)) {
                         return;
                       }
 
@@ -511,7 +569,8 @@ export default function AdminTelegramPage() {
                           body: JSON.stringify({
                             text: broadcastText,
                             imageUrl: broadcastImageUrl.trim() || null,
-                            target: broadcastTarget
+                            target: broadcastTarget,
+                            tariffIds: broadcastTariffIds.length > 0 ? broadcastTariffIds : null
                           })
                         });
 
@@ -553,7 +612,6 @@ export default function AdminTelegramPage() {
                       </>
                     )}
                   </button>
-                </div>
               </div>
             </div>
           </div>

@@ -15,6 +15,9 @@ export async function POST(
   if (authResult) return authResult;
 
   const { id } = await params;
+  if (!id || typeof id !== 'string' || id.length > 64 || /[^\w\-]/.test(id)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+  }
   const connection = await getConnection();
 
   try {
@@ -64,7 +67,7 @@ export async function POST(
           );
         }
       } catch (e: any) {
-        results.discord.error = e.message || 'Unknown error';
+        results.discord = { success: false, error: e.message || 'Unknown error' };
         console.error('Failed to grant Discord role:', e);
       }
     }
@@ -81,7 +84,7 @@ export async function POST(
           );
         }
       } catch (e: any) {
-        results.notion.error = e.message || 'Unknown error';
+        results.notion = { success: false, error: e.message || 'Unknown error' };
         console.error('Failed to grant Notion access:', e);
       }
     }
@@ -115,7 +118,7 @@ export async function POST(
           }
         }
       } catch (e: any) {
-        results.googleDrive.error = e.message || 'Unknown error';
+        results.googleDrive = { success: false, error: e.message || 'Unknown error' };
         console.error('Failed to grant Google Drive access:', e);
       }
     }

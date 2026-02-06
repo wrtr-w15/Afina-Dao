@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   if (authResult) return authResult;
 
   try {
-    const { text, imageUrl, target = 'all' } = await request.json();
+    const { text, imageUrl, target = 'all', tariffIds: rawTariffIds } = await request.json();
 
     if (!text || !text.trim()) {
       return NextResponse.json({ error: 'Текст сообщения обязателен' }, { status: 400 });
@@ -21,40 +21,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Telegram bot token не настроен' }, { status: 500 });
     }
 
+    const tariffIds = Array.isArray(rawTariffIds) && rawTariffIds.length > 0
+      ? rawTariffIds.filter((id: unknown) => typeof id === 'string' && id.trim()).map((id: string) => id.trim())
+      : [];
+
     const connection = await getConnection();
     try {
       let query: string;
       let params: any[] = [];
 
+      // Запросы возвращают telegram_id и user_id для последующей фильтрации по тарифам
       if (target === 'with_subscription') {
-        // Пользователи с активной подпиской
         query = `
-          SELECT DISTINCT u.telegram_id 
+          SELECT DISTINCT u.telegram_id, u.id AS user_id
           FROM users u
           INNER JOIN subscriptions s ON u.id COLLATE utf8mb4_unicode_ci = s.user_id COLLATE utf8mb4_unicode_ci
           WHERE u.telegram_id IS NOT NULL
-            AND s.status = 'active' 
+            AND s.status = 'active'
             AND s.end_date > NOW()
         `;
       } else if (target === 'without_subscription') {
-        // Пользователи без активной подписки
         query = `
-          SELECT DISTINCT u.telegram_id 
+          SELECT DISTINCT u.telegram_id, u.id AS user_id
           FROM users u
           LEFT JOIN subscriptions s ON u.id COLLATE utf8mb4_unicode_ci = s.user_id COLLATE utf8mb4_unicode_ci
-            AND s.status = 'active' 
+            AND s.status = 'active'
             AND s.end_date > NOW()
           WHERE u.telegram_id IS NOT NULL
             AND s.id IS NULL
         `;
       } else {
-        // Все пользователи
-        query = 'SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL';
+        query = 'SELECT DISTINCT telegram_id, id AS user_id FROM users WHERE telegram_id IS NOT NULL';
       }
 
       const [users] = await connection.execute(query, params);
+      let rows = users as { telegram_id: number; user_id: string }[];
 
-      const telegramIds = (users as any[]).map(u => u.telegram_id).filter(Boolean);
+      // Фильтр по тарифам: только пользователи с активной подпиской по одному из выбранных тарифов (старый тариф после смены не учитывается)
+      if (tariffIds.length > 0) {
+        const placeholders = tariffIds.map(() => '?').join(',');
+        const [tariffUsers] = await connection.execute(
+          `SELECT DISTINCT user_id FROM subscriptions 
+           WHERE status = 'active' AND end_date > NOW() AND tariff_id IN (${placeholders})`,
+          tariffIds
+        );
+        const allowedUserIds = new Set((tariffUsers as { user_id: string }[]).map(r => r.user_id));
+        rows = rows.filter(r => allowedUserIds.has(r.user_id));
+      }
+
+      const telegramIds = rows.map(u => u.telegram_id).filter(Boolean);
       
       if (telegramIds.length === 0) {
         return NextResponse.json({ 

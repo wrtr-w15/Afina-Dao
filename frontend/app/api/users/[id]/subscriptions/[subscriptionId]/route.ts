@@ -5,6 +5,7 @@ import { revokeAccess } from '@/lib/notion';
 import { revokeAccess as revokeGoogleDriveAccess } from '@/lib/google-drive';
 import { sendTelegramMessageToAll } from '@/lib/telegram';
 import { userHasOtherActiveSubscription } from '@/lib/subscription-notifications';
+import { validateUUIDParam } from '@/lib/security-middleware';
 
 // DELETE /api/users/[id]/subscriptions/[subscriptionId] - отменить подписку
 export async function DELETE(
@@ -16,6 +17,11 @@ export async function DELETE(
   if (authResult) return authResult;
 
   const { id: userId, subscriptionId } = await params;
+  if (!userId || typeof userId !== 'string' || userId.length > 64 || /[^\w\-]/.test(userId)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+  }
+  const subIdErr = validateUUIDParam(subscriptionId, 'subscriptionId');
+  if (subIdErr) return subIdErr;
   const connection = await getConnection();
 
   try {
@@ -122,6 +128,11 @@ export async function PUT(
   if (authResult) return authResult;
 
   const { id: userId, subscriptionId } = await params;
+  if (!userId || typeof userId !== 'string' || userId.length > 64 || /[^\w\-]/.test(userId)) {
+    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+  }
+  const subIdErr = validateUUIDParam(subscriptionId, 'subscriptionId');
+  if (subIdErr) return subIdErr;
   const data = await request.json();
   const connection = await getConnection();
 
@@ -155,6 +166,10 @@ export async function PUT(
     if (data.notionAccessGranted !== undefined) {
       updates.push('notion_access_granted = ?');
       values.push(data.notionAccessGranted);
+    }
+    if (data.tariffId !== undefined) {
+      updates.push('tariff_id = ?');
+      values.push(data.tariffId || null);
     }
 
     if (updates.length === 0) {

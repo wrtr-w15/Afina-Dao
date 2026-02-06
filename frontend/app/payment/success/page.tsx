@@ -40,7 +40,7 @@ function SuccessContent() {
         setConfirmMessage('Подписка активирована!');
       } else if (data.error === 'Payment not finished') {
         setConfirmStatus('error');
-        setConfirmMessage('Платёж ещё не завершён в NOWPayments. Подождите несколько минут и обновите страницу.');
+        setConfirmMessage('Платёж ещё не завершён в NOWPayments. Вы можете закрыть эту страницу — подписка активируется по webhook в течение нескольких минут или нажмите «Проверить статус» в Telegram-боте.');
       } else if (data.error === 'Payment not found in DB') {
         setConfirmStatus('error');
         setConfirmMessage('Платёж не найден. Обратитесь в поддержку.');

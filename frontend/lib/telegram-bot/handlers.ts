@@ -7,6 +7,7 @@ import { nowPayments } from '@/lib/nowpayments';
 import { messages } from './messages';
 import { getBotButtons } from './get-text';
 import { generatePaymentHistoryToken } from '@/lib/payment-history-tokens';
+import { addMonths } from '@/lib/utils';
 import { 
   getMainMenuKeyboard,
   applySubscriptionLabelToWelcomeKeyboard,
@@ -29,6 +30,11 @@ import crypto from 'crypto';
 const SUBSCRIPTION_BOT_TOKEN = process.env.TELEGRAM_SUBSCRIPTION_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${SUBSCRIPTION_BOT_TOKEN}`;
 
+/** Таймаут запросов к Telegram API (мс), чтобы не держать соединения при нагрузке */
+const TELEGRAM_FETCH_TIMEOUT_MS = 15000;
+/** Таймаут внутренних API (промокоды, confirm-payment) при вызове из бота */
+const INTERNAL_API_TIMEOUT_MS = 12000;
+
 // Отправка сообщения
 export async function sendMessage(chatId: number, text: string, keyboard?: any): Promise<any> {
   console.log(`[Telegram Bot] sendMessage called - chatId: ${chatId}, text length: ${text?.length || 0}, text preview: "${text?.substring(0, 100)}..."`);
@@ -43,7 +49,8 @@ export async function sendMessage(chatId: number, text: string, keyboard?: any):
     const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(TELEGRAM_FETCH_TIMEOUT_MS)
     });
     const result = await response.json();
     if (!result.ok) {
@@ -73,7 +80,8 @@ export async function editMessage(chatId: number, messageId: number, text: strin
     const response = await fetch(`${TELEGRAM_API}/editMessageText`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(TELEGRAM_FETCH_TIMEOUT_MS)
     });
     const result = await response.json();
     if (!result.ok) {
@@ -94,7 +102,8 @@ export async function deleteMessage(chatId: number, messageId: number): Promise<
     const response = await fetch(`${TELEGRAM_API}/deleteMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+      signal: AbortSignal.timeout(TELEGRAM_FETCH_TIMEOUT_MS)
     });
     const result = await response.json();
     if (!result.ok) {
@@ -113,7 +122,8 @@ export async function answerCallback(callbackQueryId: string, text?: string): Pr
     const response = await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callback_query_id: callbackQueryId, text })
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
+      signal: AbortSignal.timeout(TELEGRAM_FETCH_TIMEOUT_MS)
     });
     const result = await response.json();
     if (!result.ok) {
@@ -856,12 +866,22 @@ export async function handleEmailInput(message: any): Promise<void> {
     } finally {
       connection.release();
     }
-    // Уведомление админу в 2FA: с какой на какую почту поменяли для Notion
+    // Уведомление админу только если у пользователя есть активная подписка — тогда нужно выдать/обновить доступ к Notion
     if (oldEmail !== email) {
-      const userLabel = message.from?.username ? `@${message.from.username}` : message.from?.first_name || `ID: ${telegramId}`;
-      const fromTo = oldEmail ? `с \`${oldEmail}\` на \`${email}\`` : `указана почта: \`${email}\``;
-      const adminMsg = `📧 *Notion: смена почты в боте*\n\nПользователь ${userLabel} (TG ID: \`${telegramId}\`) ${oldEmail ? 'поменял' : 'указал'} почту для Notion: ${fromTo}`;
-      sendTelegramMessageToAll(adminMsg).catch((e) => console.error('Failed to send admin Notion email change notification:', e));
+      let hasActiveSubscription = false;
+      try {
+        const { id: userId } = await getOrCreateUser(message.from);
+        const subscription = await getActiveSubscription(userId);
+        hasActiveSubscription = !!subscription;
+      } catch (_) {
+        // игнорируем ошибки при проверке подписки
+      }
+      if (hasActiveSubscription) {
+        const userLabel = message.from?.username ? `@${message.from.username}` : message.from?.first_name || `ID: ${telegramId}`;
+        const fromTo = oldEmail ? `с \`${oldEmail}\` на \`${email}\`` : `указана почта: \`${email}\``;
+        const adminMsg = `📧 *Notion: смена почты в боте*\n\nПользователь ${userLabel} (TG ID: \`${telegramId}\`) ${oldEmail ? 'поменял' : 'указал'} почту для Notion: ${fromTo}`;
+        sendTelegramMessageToAll(adminMsg).catch((e) => console.error('Failed to send admin Notion email change notification:', e));
+      }
     }
     const state = await getUserState(telegramId);
     if (state?.state === 'entering_email' && state.data?.planId) {
@@ -996,7 +1016,8 @@ export async function handlePromocodeInput(message: any): Promise<void> {
         amount: state.data.priceUsdt,
         periodMonths: state.data.period,
         tariffId: state.data.tariffId
-      })
+      }),
+      signal: AbortSignal.timeout(INTERNAL_API_TIMEOUT_MS)
     });
     
     const checkData = await checkResponse.json();
@@ -1014,12 +1035,18 @@ export async function handlePromocodeInput(message: any): Promise<void> {
       return;
     }
     
-    // Сохраняем промокод в состояние
+    // Если промокод присваивает другой тариф — подставляем его в состояние
+    const hasOverrideTariff = checkData.promocode.override_tariff_id && checkData.promocode.override_tariff_price_id && checkData.promocode.override_plan_name;
     const updatedState = {
       ...state.data,
+      ...(hasOverrideTariff ? {
+        tariffId: checkData.promocode.override_tariff_id,
+        planId: checkData.promocode.override_tariff_price_id,
+        planName: checkData.promocode.override_plan_name,
+        originalPrice: Number(checkData.promocode.original_amount)
+      } : { originalPrice: state.data.priceUsdt }),
       promocode: checkData.promocode.code,
       promocodeId: checkData.promocode.id,
-      originalPrice: state.data.priceUsdt,
       priceUsdt: checkData.promocode.final_amount,
       discountAmount: checkData.promocode.discount_amount,
       discountPercent: checkData.promocode.discount_percent,
@@ -1034,16 +1061,19 @@ export async function handlePromocodeInput(message: any): Promise<void> {
     const needsGoogleDriveEmail = !user?.google_drive_email;
 
     // Вступление + полный блок подтверждения заказа (как на экране подтверждения), включая данные о промокоде и скидке
-    const introText = 'Пожалуйста, проверьте корректность подключений — после оплаты доступы будут выданы на данные, указанные ниже.\n\nЕсли всё верно, можете перейти к оплате.\n\n';
+    const planNameForConfirm = hasOverrideTariff ? checkData.promocode.override_plan_name : (state.data.planName || 'Подписка');
+    const introText = hasOverrideTariff
+      ? `По промокоду вам предоставляется тариф: <b>${String(checkData.promocode.override_tariff_name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</b>.\n\nПожалуйста, проверьте корректность подключений — после оплаты доступы будут выданы на данные, указанные ниже.\n\nЕсли всё верно, можете перейти к оплате.\n\n`
+      : 'Пожалуйста, проверьте корректность подключений — после оплаты доступы будут выданы на данные, указанные ниже.\n\nЕсли всё верно, можете перейти к оплате.\n\n';
     const confirmText = await messages.confirmOrder({
-      planName: state.data.planName || 'Подписка',
+      planName: planNameForConfirm,
       period: state.data.period ?? 1,
       priceUsdt: checkData.promocode.final_amount,
       discordUsername: user?.discord_username,
       email: user?.email,
       googleDriveEmail: user?.google_drive_email,
       promocode: checkData.promocode.code,
-      originalPrice: Number(state.data.priceUsdt),
+      originalPrice: Number(hasOverrideTariff ? checkData.promocode.original_amount : state.data.priceUsdt),
       discountPercent: checkData.promocode.discount_percent,
       discountType: checkData.promocode.discount_type === 'fixed' ? 'fixed' : 'percent',
       discountAmount: checkData.promocode.discount_amount
@@ -1105,25 +1135,27 @@ export async function handleConfirmOrder(callbackQuery: any): Promise<void> {
           [subscriptionId, userId, state.data.tariffId || null, state.data.planId, state.data.period, originalAmount, 'USDT']
         );
       }
-      // Продление: платёж привязываем к существующей активной подписке (её end_date увеличится в webhook)
-      await connection.execute(
-        `INSERT INTO payments (id, subscription_id, user_id, amount, currency, status, payment_method) VALUES (?, ?, ?, ?, ?, 'pending', 'crypto')`,
-        [paymentId, subscriptionId, userId, amount, 'USDT']
-      );
-      
-      // Сохраняем использование промокода, если он был применён
-      if (promocodeId) {
-        const discountAmount = state.data.discountAmount ? Number(state.data.discountAmount) : (originalAmount - amount);
-        await connection.execute(
-          `INSERT INTO promocode_usages (id, promocode_id, user_id, subscription_id, amount, discount_amount) VALUES (?, ?, ?, ?, ?, ?)`,
-          [crypto.randomUUID(), promocodeId, userId, subscriptionId, originalAmount, discountAmount]
-        );
-        // Обновляем счётчик использований
-        await connection.execute(
-          `UPDATE promocodes SET used_count = used_count + 1 WHERE id = ?`,
-          [promocodeId]
-        );
+      // Колонки промокода в payments (использование записывается только после успешной оплаты в webhook)
+      try {
+        await connection.execute(`ALTER TABLE payments ADD COLUMN promocode_id VARCHAR(36) NULL`);
+      } catch (e: any) {
+        if (!e.message?.includes('Duplicate column name')) throw e;
       }
+      try {
+        await connection.execute(`ALTER TABLE payments ADD COLUMN promocode_original_amount DECIMAL(10,2) NULL`);
+      } catch (e: any) {
+        if (!e.message?.includes('Duplicate column name')) throw e;
+      }
+      try {
+        await connection.execute(`ALTER TABLE payments ADD COLUMN promocode_discount_amount DECIMAL(10,2) NULL`);
+      } catch (e: any) {
+        if (!e.message?.includes('Duplicate column name')) throw e;
+      }
+      const discountAmount = promocodeId && state.data.discountAmount != null ? Number(state.data.discountAmount) : (originalAmount - amount);
+      await connection.execute(
+        `INSERT INTO payments (id, subscription_id, user_id, amount, currency, status, payment_method, promocode_id, promocode_original_amount, promocode_discount_amount) VALUES (?, ?, ?, ?, ?, 'pending', 'crypto', ?, ?, ?)`,
+        [paymentId, subscriptionId, userId, amount, 'USDT', promocodeId, promocodeId ? originalAmount : null, promocodeId ? discountAmount : null]
+      );
 
       // Создаём инвойс NOWPayments (сумма в USDT как на сайте)
       let invoiceUrl: string | undefined;
@@ -1286,6 +1318,24 @@ export async function handleRefreshAccess(callbackQuery: any): Promise<void> {
   }
 }
 
+export async function handleHowToStartCommunity(callbackQuery: any): Promise<void> {
+  const chatId = callbackQuery.message.chat.id;
+  const telegramId = callbackQuery.from.id;
+  try {
+    await answerCallback(callbackQuery.id);
+    const user = await getUserData(telegramId);
+    const text = await messages.howToStartInCommunity(user?.email);
+    const discordInvite = process.env.DISCORD_INVITE_URL;
+    const keyboard = discordInvite
+      ? { inline_keyboard: [[{ text: '🎮 Перейти в Discord', url: discordInvite }], [{ text: '🏠 Главное меню', callback_data: 'back_to_main' }]] }
+      : getBackToMainKeyboard();
+    await sendMessage(chatId, text, keyboard);
+  } catch (error: any) {
+    console.error('[Telegram Bot] Error in handleHowToStartCommunity:', error);
+    await sendMessage(chatId, await messages.error()).catch(() => {});
+  }
+}
+
 export async function handleProcessPayment(callbackQuery: any): Promise<void> {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
@@ -1300,10 +1350,26 @@ export async function handleProcessPayment(callbackQuery: any): Promise<void> {
     const connection = await getConnection();
     try {
       const now = new Date();
-      const endDate = new Date(now);
-      endDate.setMonth(endDate.getMonth() + state.data.period);
+      const periodMonths = Math.max(1, Math.min(120, Math.floor(Number(state.data.period) || 1)));
+      const endDate = addMonths(now, periodMonths);
       await connection.execute(`UPDATE subscriptions SET status = 'active', start_date = ?, end_date = ? WHERE id = ?`, [now, endDate, state.data.subscriptionId]);
       await connection.execute(`UPDATE payments SET status = 'completed', paid_at = CURRENT_TIMESTAMP WHERE id = ?`, [state.data.paymentId]);
+      const [subRows] = await connection.execute(
+        'SELECT user_id, tariff_id FROM subscriptions WHERE id = ?',
+        [state.data.subscriptionId]
+      );
+      const sub = (subRows as any[])[0];
+      if (sub?.tariff_id) {
+        try {
+          await connection.execute('DELETE FROM user_available_tariffs WHERE user_id = ?', [sub.user_id]);
+          await connection.execute(
+            'INSERT INTO user_available_tariffs (id, user_id, tariff_id) VALUES (?, ?, ?)',
+            [crypto.randomUUID(), sub.user_id, sub.tariff_id]
+          );
+        } catch (e) {
+          console.error('[Telegram Bot] Error syncing user_available_tariffs:', e);
+        }
+      }
       await clearUserState(telegramId);
       let communityUrl = (process.env.DISCORD_INVITE_URL || '').trim();
       try {
@@ -2035,11 +2101,101 @@ export async function handleRefreshAccountInfo(callbackQuery: any): Promise<void
 
 export async function handleCheckPaymentStatus(callbackQuery: any): Promise<void> {
   const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const telegramId = callbackQuery.from.id;
   try {
-    await answerCallback(callbackQuery.id, '🔄 Проверяем статус...');
-    await sendMessage(chatId, '⚠️ Проверка статуса оплаты. Убедитесь, что оплата прошла, и нажмите «Проверить статус» снова или дождитесь уведомления.', getBackToMainKeyboard());
+    await answerCallback(callbackQuery.id, '🔄 Проверяем статус оплаты...');
+    const state = await getUserState(telegramId);
+    if (!state || state.state !== 'awaiting_payment' || !state.data?.paymentId) {
+      await editMessage(chatId, messageId, 'У вас нет ожидающих оплату платежей. Если вы уже оплатили — подписка придёт по webhook в течение нескольких минут.', getBackToMainKeyboard());
+      return;
+    }
+    const connection = await getConnection();
+    let externalId: string | null = null;
+    try {
+      const [rows] = await connection.execute(
+        'SELECT external_id, provider_data FROM payments WHERE id = ?',
+        [state.data.paymentId]
+      );
+      const row = (rows as any[])[0];
+      if (row?.external_id) {
+        externalId = String(row.external_id);
+      } else if (row?.provider_data) {
+        try {
+          const pd = typeof row.provider_data === 'string' ? JSON.parse(row.provider_data) : row.provider_data;
+          if (pd?.payment_id != null) externalId = String(pd.payment_id);
+          else if (pd?.invoice_id != null) externalId = String(pd.invoice_id);
+        } catch (_) {}
+      }
+    } finally {
+      connection.release();
+    }
+    if (!externalId) {
+      await editMessage(chatId, messageId, 'Не удалось определить платёж. Дождитесь уведомления об активации подписки или обратитесь в поддержку.', getBackToMainKeyboard());
+      return;
+    }
+    let status: { payment_status?: string; payment_id?: number };
+    try {
+      status = await nowPayments.getPaymentStatus(externalId);
+    } catch (e) {
+      console.warn('[Telegram Bot] getPaymentStatus failed for', externalId, e);
+      await editMessage(chatId, messageId, 'Не удалось получить статус у платёжной системы. Подписка может прийти по webhook. Нажмите «Проверить статус» позже или дождитесь уведомления.', getPaymentKeyboard());
+      return;
+    }
+    const statusLower = (status?.payment_status || '').toLowerCase();
+    if (statusLower === 'finished') {
+      const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+      const confirmSecret = process.env.NOWPAYMENTS_CONFIRM_SECRET;
+      const body: { payment_id: string; secret?: string } = { payment_id: String(status.payment_id ?? externalId) };
+      if (confirmSecret) body.secret = confirmSecret;
+      try {
+        const res = await fetch(`${baseUrl}/api/nowpayments/confirm-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(INTERNAL_API_TIMEOUT_MS)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+          await clearUserState(telegramId);
+          let communityUrl = (process.env.DISCORD_INVITE_URL || '').trim();
+          try {
+            const conn = await getConnection();
+            const [linkRows] = await conn.execute(
+              `SELECT \`key\`, value FROM site_contact_links WHERE \`key\` IN ('community_button_url', 'discord_invite_url')`
+            );
+            const linkMap: Record<string, string> = {};
+            for (const r of linkRows as { key: string; value: string | null }[]) {
+              linkMap[r.key] = (r.value ?? '').trim();
+            }
+            communityUrl = linkMap.community_button_url || linkMap.discord_invite_url || communityUrl;
+            conn.release();
+          } catch (_) {}
+          await editMessage(chatId, messageId, await messages.paymentSuccess(), getSuccessKeyboard(communityUrl));
+          return;
+        }
+        if (data.error === 'Payment not found in DB') {
+          await editMessage(chatId, messageId, 'Платёж не найден в базе. Обратитесь в поддержку.', getBackToMainKeyboard());
+          return;
+        }
+      } catch (fetchErr) {
+        console.error('[Telegram Bot] confirm-payment fetch error:', fetchErr);
+      }
+      await editMessage(chatId, messageId, 'Оплата завершена у платёжной системы, но активация не прошла. Подписка должна прийти по webhook. Если не пришла — напишите в поддержку.', getBackToMainKeyboard());
+      return;
+    }
+    if (statusLower === 'confirming' || statusLower === 'waiting' || statusLower === 'sending') {
+      await editMessage(chatId, messageId, '⏳ Платёж в обработке (подтверждение в блокчейне). Подождите несколько минут и нажмите «Проверить статус» снова.', getPaymentKeyboard());
+      return;
+    }
+    if (statusLower === 'failed' || statusLower === 'expired') {
+      await editMessage(chatId, messageId, `Платёж не прошёл (статус: ${statusLower}). Создайте новый заказ, если хотите оформить подписку.`, getBackToMainKeyboard());
+      return;
+    }
+    await editMessage(chatId, messageId, `Текущий статус: ${statusLower || 'ожидание'}. После оплаты нажмите «Проверить статус» снова или дождитесь уведомления.`, getPaymentKeyboard());
   } catch (error) {
     console.error('Error in handleCheckPaymentStatus:', error);
+    await editMessage(chatId, messageId, 'Не удалось проверить статус. Попробуйте позже или дождитесь уведомления.', getBackToMainKeyboard()).catch(() => {});
   }
 }
 

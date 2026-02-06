@@ -92,6 +92,8 @@ export default function TariffsPage() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  /** Все тарифы для выбора «после окончания подписки» (включая неактивные и архивные) */
+  const [allTariffsForExpiry, setAllTariffsForExpiry] = useState<Tariff[]>([]);
 
   useEffect(() => {
     loadTariffs();
@@ -99,6 +101,20 @@ export default function TariffsPage() {
 
   useEffect(() => {
     loadTariffSettings();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/tariffs?includeArchived=true&includeCustom=true');
+        if (res.ok) {
+          const data = await res.json();
+          setAllTariffsForExpiry(data.tariffs || []);
+        }
+      } catch {
+        // ignore
+      }
+    })();
   }, []);
 
   const loadTariffSettings = async () => {
@@ -541,10 +557,14 @@ export default function TariffsPage() {
                           className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50 text-sm"
                         >
                           <option value="">По умолчанию (первый активный)</option>
-                          {tariffs.filter((t) => t.isActive && !t.isArchived).map((t) => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
+                          {allTariffsForExpiry.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                              {!t.isActive && !t.isArchived ? ' (неактивен)' : t.isArchived ? ' (архив)' : ''}
+                            </option>
                           ))}
                         </select>
+                        <p className="text-xs text-gray-500 mt-1">Можно выбрать любой тариф, не только активный</p>
                       </div>
                     )}
                   </div>

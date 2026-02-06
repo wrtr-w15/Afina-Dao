@@ -318,14 +318,22 @@ export async function GET(request: NextRequest) {
     // Получаем пользователей с подсчётом подписок
     // Используем query вместо execute для динамических запросов с LIMIT/OFFSET
     // Добавляем COLLATE utf8mb4_unicode_ci для совместимости collation
+    const collate = 'COLLATE utf8mb4_unicode_ci';
     const [rows] = await connection.query(`
       SELECT 
         u.*,
         COUNT(DISTINCT s.id) as total_subscriptions,
         SUM(CASE WHEN s.status = 'active' AND s.end_date > NOW() THEN 1 ELSE 0 END) as active_subscriptions,
-        MAX(CASE WHEN s.status = 'active' AND s.end_date > NOW() THEN s.end_date ELSE NULL END) as subscription_end_date
+        MAX(CASE WHEN s.status = 'active' AND s.end_date > NOW() THEN s.end_date ELSE NULL END) as subscription_end_date,
+        (SELECT s2.tariff_id FROM subscriptions s2 
+         WHERE s2.user_id ${collate} = u.id ${collate} AND s2.status = 'active' AND s2.end_date > NOW() 
+         ORDER BY s2.end_date DESC LIMIT 1) as current_tariff_id,
+        (SELECT t.name FROM subscriptions s2 
+         LEFT JOIN tariffs t ON t.id ${collate} = s2.tariff_id ${collate} 
+         WHERE s2.user_id ${collate} = u.id ${collate} AND s2.status = 'active' AND s2.end_date > NOW() 
+         ORDER BY s2.end_date DESC LIMIT 1) as current_tariff_name
       FROM users u
-      LEFT JOIN subscriptions s ON u.id COLLATE utf8mb4_unicode_ci = s.user_id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN subscriptions s ON u.id ${collate} = s.user_id ${collate}
       WHERE ${whereClause}
       GROUP BY u.id
       ${hasSubscription === 'true' ? 'HAVING active_subscriptions > 0' : ''}
@@ -338,7 +346,7 @@ export async function GET(request: NextRequest) {
     const [countResult] = await connection.query(`
       SELECT COUNT(DISTINCT u.id) as total 
       FROM users u
-      LEFT JOIN subscriptions s ON u.id COLLATE utf8mb4_unicode_ci = s.user_id COLLATE utf8mb4_unicode_ci
+      LEFT JOIN subscriptions s ON u.id ${collate} = s.user_id ${collate}
       WHERE ${whereClause}
       ${hasSubscription === 'true' ? 'GROUP BY u.id HAVING SUM(CASE WHEN s.status = \'active\' AND s.end_date > NOW() THEN 1 ELSE 0 END) > 0' : ''}
       ${hasSubscription === 'false' ? 'GROUP BY u.id HAVING SUM(CASE WHEN s.status = \'active\' AND s.end_date > NOW() THEN 1 ELSE 0 END) = 0' : ''}
@@ -361,7 +369,9 @@ export async function GET(request: NextRequest) {
       updatedAt: row.updated_at,
       totalSubscriptions: row.total_subscriptions,
       activeSubscriptions: row.active_subscriptions,
-      subscriptionEndDate: row.subscription_end_date
+      subscriptionEndDate: row.subscription_end_date,
+      tariffId: row.current_tariff_id || undefined,
+      tariffName: row.current_tariff_name || undefined
     }));
 
     return NextResponse.json({

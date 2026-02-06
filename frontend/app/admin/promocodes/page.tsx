@@ -28,6 +28,7 @@ interface Promocode {
   used_count: number;
   allowed_users: string[] | null;
   allowed_tariff_ids: string[] | null;
+  override_tariff_id: string | null;
   extra_days: Record<string, number> | null;
   is_active: boolean;
   valid_from: string | null;
@@ -45,15 +46,19 @@ export default function PromocodesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
+  type EffectType = 'percent' | 'fixed' | 'extra_days' | 'override_tariff';
+
   const [formData, setFormData] = useState({
     code: '',
     type: 'mass' as 'mass' | 'personal',
+    effect_type: 'percent' as EffectType,
     discount_type: 'percent' as 'percent' | 'fixed',
     discount_percent: null as number | null,
     discount_amount: null as number | null,
     max_uses: null as number | null,
     allowed_users: [] as string[],
     allowed_tariff_ids: [] as string[],
+    override_tariff_id: '' as string,
     extra_days: {} as Record<string, number>,
     is_active: true,
     valid_from: '' as string,
@@ -78,6 +83,30 @@ export default function PromocodesPage() {
     }
   };
 
+  function buildPromocodePayload(fd: typeof formData) {
+    const effect = fd.effect_type;
+    const discount_type = effect === 'fixed' ? 'fixed' : 'percent';
+    const discount_percent = effect === 'percent' ? (fd.discount_percent ?? 0) : 0;
+    const discount_amount = effect === 'fixed' ? (fd.discount_amount ?? 0) : 0;
+    const extra_days = effect === 'extra_days' && fd.extra_days && Object.keys(fd.extra_days).length > 0 ? fd.extra_days : null;
+    const override_tariff_id = effect === 'override_tariff' && fd.override_tariff_id?.trim() ? fd.override_tariff_id.trim() : null;
+    return {
+      code: fd.code,
+      type: fd.type,
+      discount_type,
+      discount_percent: effect === 'percent' ? discount_percent : null,
+      discount_amount: effect === 'fixed' ? discount_amount : null,
+      max_uses: fd.max_uses,
+      allowed_users: fd.allowed_users,
+      allowed_tariff_ids: (fd.allowed_tariff_ids ?? []).length > 0 ? fd.allowed_tariff_ids : null,
+      extra_days,
+      override_tariff_id,
+      is_active: fd.is_active,
+      valid_from: fd.valid_from || null,
+      valid_until: fd.valid_until || null
+    };
+  }
+
   const loadPromocodes = async () => {
     try {
       setLoading(true);
@@ -96,11 +125,14 @@ export default function PromocodesPage() {
     setFormData({
       code: '',
       type: 'mass',
+      effect_type: 'percent',
       discount_type: 'percent',
       discount_percent: null,
       discount_amount: null,
       max_uses: null,
       allowed_users: [],
+      allowed_tariff_ids: [],
+      override_tariff_id: '',
       extra_days: {},
       is_active: true,
       valid_from: '',
@@ -115,14 +147,32 @@ export default function PromocodesPage() {
       setMessage({ type: 'error', text: 'Введите код промокода' });
       return;
     }
-    if (formData.discount_type === 'percent') {
-      if (formData.discount_percent === null || formData.discount_percent <= 0 || formData.discount_percent > 100) {
-        setMessage({ type: 'error', text: 'Скидка должна быть от 1 до 100%' });
+    const et = formData.effect_type;
+    if (et === 'percent') {
+      const pct = formData.discount_percent ?? 0;
+      if (pct <= 0 || pct > 100) {
+        setMessage({ type: 'error', text: 'Укажите процент скидки от 1 до 100' });
         return;
       }
-    } else if (formData.discount_type === 'fixed') {
-      if (formData.discount_amount === null || formData.discount_amount <= 0) {
-        setMessage({ type: 'error', text: 'Сумма скидки должна быть больше 0' });
+    } else if (et === 'fixed') {
+      const amt = formData.discount_amount ?? 0;
+      if (amt <= 0) {
+        setMessage({ type: 'error', text: 'Укажите сумму скидки больше 0 USDT' });
+        return;
+      }
+    } else if (et === 'extra_days') {
+      if (!formData.extra_days || Object.keys(formData.extra_days).length === 0) {
+        setMessage({ type: 'error', text: 'Добавьте хотя бы один период и количество дней' });
+        return;
+      }
+      const invalid = Object.entries(formData.extra_days).some(([p, d]) => !p || parseInt(p) <= 0 || !d || parseInt(String(d)) <= 0);
+      if (invalid) {
+        setMessage({ type: 'error', text: 'Укажите корректные период (мес.) и количество дней' });
+        return;
+      }
+    } else if (et === 'override_tariff') {
+      if (!formData.override_tariff_id?.trim()) {
+        setMessage({ type: 'error', text: 'Выберите тариф по промокоду' });
         return;
       }
     }
@@ -131,16 +181,13 @@ export default function PromocodesPage() {
       return;
     }
 
+    const payload = buildPromocodePayload(formData);
     setSaving(true);
     try {
       const res = await fetch('/api/admin/promocodes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          allowed_tariff_ids: (formData.allowed_tariff_ids ?? []).length > 0 ? (formData.allowed_tariff_ids ?? []) : null,
-          extra_days: Object.keys(formData.extra_days || {}).length > 0 ? formData.extra_days : null
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка создания');
@@ -160,14 +207,27 @@ export default function PromocodesPage() {
       setMessage({ type: 'error', text: 'Введите код промокода' });
       return;
     }
-    if (formData.discount_type === 'percent') {
-      if (formData.discount_percent === null || formData.discount_percent <= 0 || formData.discount_percent > 100) {
-        setMessage({ type: 'error', text: 'Скидка должна быть от 1 до 100%' });
+    const et = formData.effect_type;
+    if (et === 'percent') {
+      const pct = formData.discount_percent ?? 0;
+      if (pct <= 0 || pct > 100) {
+        setMessage({ type: 'error', text: 'Укажите процент скидки от 1 до 100' });
         return;
       }
-    } else if (formData.discount_type === 'fixed') {
-      if (formData.discount_amount === null || formData.discount_amount <= 0) {
-        setMessage({ type: 'error', text: 'Сумма скидки должна быть больше 0' });
+    } else if (et === 'fixed') {
+      const amt = formData.discount_amount ?? 0;
+      if (amt <= 0) {
+        setMessage({ type: 'error', text: 'Укажите сумму скидки больше 0 USDT' });
+        return;
+      }
+    } else if (et === 'extra_days') {
+      if (!formData.extra_days || Object.keys(formData.extra_days).length === 0) {
+        setMessage({ type: 'error', text: 'Добавьте хотя бы один период и количество дней' });
+        return;
+      }
+    } else if (et === 'override_tariff') {
+      if (!formData.override_tariff_id?.trim()) {
+        setMessage({ type: 'error', text: 'Выберите тариф по промокоду' });
         return;
       }
     }
@@ -176,17 +236,13 @@ export default function PromocodesPage() {
       return;
     }
 
+    const payload = buildPromocodePayload(formData);
     setSaving(true);
     try {
       const res = await fetch('/api/admin/promocodes', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingId,
-          ...formData,
-          allowed_tariff_ids: (formData.allowed_tariff_ids ?? []).length > 0 ? (formData.allowed_tariff_ids ?? []) : null,
-          extra_days: Object.keys(formData.extra_days || {}).length > 0 ? formData.extra_days : null
-        })
+        body: JSON.stringify({ id: editingId, ...payload })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка обновления');
@@ -232,16 +288,27 @@ export default function PromocodesPage() {
     const allowedTariffIds = promocode.allowed_tariff_ids
       ? (typeof promocode.allowed_tariff_ids === 'string' ? JSON.parse(promocode.allowed_tariff_ids) : promocode.allowed_tariff_ids)
       : [];
-    
+    const hasOverride = Boolean(promocode.override_tariff_id);
+    const hasExtraDays = extraDays && Object.keys(extraDays).length > 0;
+    const effect_type: EffectType = hasOverride
+      ? 'override_tariff'
+      : hasExtraDays
+        ? 'extra_days'
+        : promocode.discount_type === 'fixed'
+          ? 'fixed'
+          : 'percent';
+
     setFormData({
       code: promocode.code,
       type: promocode.type,
+      effect_type,
       discount_type: promocode.discount_type || 'percent',
       discount_percent: promocode.discount_percent,
       discount_amount: promocode.discount_amount,
       max_uses: promocode.max_uses,
       allowed_users: promocode.allowed_users || [],
       allowed_tariff_ids: Array.isArray(allowedTariffIds) ? allowedTariffIds : [],
+      override_tariff_id: promocode.override_tariff_id || '',
       extra_days: extraDays,
       is_active: promocode.is_active,
       valid_from: formatDateForInput(promocode.valid_from),
@@ -346,11 +413,28 @@ export default function PromocodesPage() {
                       ) : (
                         <span className="px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-sm">Неактивен</span>
                       )}
+                      {(() => {
+                        const hasOverride = Boolean(promocode.override_tariff_id);
+                        const hasExtraDays = promocode.extra_days && typeof promocode.extra_days === 'object' && !Array.isArray(promocode.extra_days) && Object.keys(promocode.extra_days).length > 0;
+                        const effectLabel = hasOverride ? 'Смена тарифа' : hasExtraDays ? 'Доп. дни' : promocode.discount_type === 'fixed' ? 'Фикс. сумма' : 'Скидка %';
+                        const effectColors = hasOverride ? 'bg-amber-500/20 text-amber-400' : hasExtraDays ? 'bg-green-500/20 text-green-400' : promocode.discount_type === 'fixed' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-blue-500/20 text-blue-400';
+                        return (
+                          <span className={`px-2 py-1 rounded text-sm ${effectColors}`}>{effectLabel}</span>
+                        );
+                      })()}
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                       <div>
-                        <div className="text-sm text-gray-400">Скидка</div>
-                        <div className="text-xl font-bold text-white">{promocode.discount_percent}%</div>
+                        <div className="text-sm text-gray-400">Эффект / скидка</div>
+                        <div className="text-xl font-bold text-white">
+                          {promocode.override_tariff_id
+                            ? (tariffs.find(t => t.id === promocode.override_tariff_id)?.name ?? '—')
+                            : promocode.extra_days && typeof promocode.extra_days === 'object' && Object.keys(promocode.extra_days).length > 0
+                              ? Object.entries(typeof promocode.extra_days === 'string' ? JSON.parse(promocode.extra_days) : promocode.extra_days).map(([p, d]) => `${p} мес.: +${d} дн.`).join(', ')
+                              : promocode.discount_type === 'fixed'
+                                ? `${Number(promocode.discount_amount ?? 0).toFixed(2)} USDT`
+                                : `${promocode.discount_percent ?? 0}%`}
+                        </div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-400">Использований</div>
@@ -408,6 +492,17 @@ export default function PromocodesPage() {
                         </div>
                       </div>
                     )}
+                    {promocode.override_tariff_id && (() => {
+                      const overrideTariff = tariffs.find(t => t.id === promocode.override_tariff_id);
+                      return (
+                        <div className="mt-4">
+                          <div className="text-sm text-gray-400 mb-2">Тариф по промокоду:</div>
+                          <span className="px-2 py-1 bg-amber-500/20 text-amber-400 rounded text-sm">
+                            {overrideTariff ? overrideTariff.name : promocode.override_tariff_id}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     {promocode.allowed_tariff_ids && (() => {
                       const tariffIds = typeof promocode.allowed_tariff_ids === 'string' 
                         ? JSON.parse(promocode.allowed_tariff_ids) 
@@ -434,7 +529,7 @@ export default function PromocodesPage() {
                         <div className="flex flex-wrap gap-2">
                           {Object.entries(typeof promocode.extra_days === 'string' ? JSON.parse(promocode.extra_days) : promocode.extra_days).map(([period, days]) => (
                             <span key={period} className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-sm">
-                              {period} мес. → +{days} дней
+                              {period} мес. → +{Number(days)} дней
                             </span>
                           ))}
                         </div>
@@ -494,6 +589,20 @@ export default function PromocodesPage() {
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Тип промокода</label>
                   <select
+                    value={formData.effect_type}
+                    onChange={(e) => setFormData(prev => ({ ...prev, effect_type: e.target.value as EffectType }))}
+                    className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="percent">Скидка в процентах</option>
+                    <option value="fixed">Фиксированная сумма</option>
+                    <option value="extra_days">Добавление дней</option>
+                    <option value="override_tariff">Смена тарифа</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Кому доступен</label>
+                  <select
                     value={formData.type}
                     onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'mass' | 'personal', allowed_users: e.target.value === 'mass' ? [] : prev.allowed_users }))}
                     className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
@@ -503,48 +612,126 @@ export default function PromocodesPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Тип скидки</label>
-                  <select
-                    value={formData.discount_type}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      discount_type: e.target.value as 'percent' | 'fixed',
-                      discount_percent: e.target.value === 'percent' ? prev.discount_percent : null,
-                      discount_amount: e.target.value === 'fixed' ? prev.discount_amount : null
-                    }))}
-                    className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="percent">Процентная (%)</option>
-                    <option value="fixed">Фиксированная сумма (USDT)</option>
-                  </select>
-                </div>
-
-                {formData.discount_type === 'percent' ? (
+                {formData.effect_type === 'percent' && (
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Скидка (%)</label>
+                    <label className="block text-sm text-gray-400 mb-2">Процент скидки (%)</label>
                     <input
                       type="number"
                       min="1"
                       max="100"
-                      value={formData.discount_percent || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, discount_percent: e.target.value ? parseFloat(e.target.value) : null }))}
+                      value={formData.discount_percent ?? ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, discount_percent: e.target.value !== '' ? parseFloat(e.target.value) : null }))}
                       className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                       placeholder="10"
                     />
                   </div>
-                ) : (
+                )}
+
+                {formData.effect_type === 'fixed' && (
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">Сумма скидки (USDT)</label>
                     <input
                       type="number"
                       min="0.01"
                       step="0.01"
-                      value={formData.discount_amount || ''}
-                      onChange={(e) => setFormData(prev => ({ ...prev, discount_amount: e.target.value ? parseFloat(e.target.value) : null }))}
+                      value={formData.discount_amount ?? ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, discount_amount: e.target.value !== '' ? parseFloat(e.target.value) : null }))}
                       className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                       placeholder="10.00"
                     />
+                  </div>
+                )}
+
+                {formData.effect_type === 'extra_days' && (
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">
+                      Дополнительные дни к подписке (по периодам)
+                      <span className="text-xs text-gray-500 ml-2">Период в месяцах → количество дней</span>
+                    </label>
+                    <div className="space-y-2">
+                      {Object.entries(formData.extra_days || {}).map(([period, days]) => (
+                        <div key={period} className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={period}
+                            onChange={(e) => {
+                              const newPeriod = e.target.value;
+                              if (newPeriod && parseInt(newPeriod) > 0) {
+                                const newExtraDays = { ...formData.extra_days };
+                                delete newExtraDays[period];
+                                newExtraDays[newPeriod] = days;
+                                setFormData(prev => ({ ...prev, extra_days: newExtraDays }));
+                              }
+                            }}
+                            className="w-24 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                            placeholder="Период"
+                          />
+                          <span className="text-gray-400">мес. →</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={days}
+                            onChange={(e) => {
+                              const newDays = e.target.value ? parseInt(e.target.value) : 0;
+                              if (newDays > 0) {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  extra_days: { ...prev.extra_days, [period]: newDays }
+                                }));
+                              } else {
+                                const newExtraDays = { ...formData.extra_days };
+                                delete newExtraDays[period];
+                                setFormData(prev => ({ ...prev, extra_days: newExtraDays }));
+                              }
+                            }}
+                            className="w-24 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                            placeholder="Дней"
+                          />
+                          <span className="text-gray-400">дней</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newExtraDays = { ...formData.extra_days };
+                              delete newExtraDays[period];
+                              setFormData(prev => ({ ...prev, extra_days: newExtraDays }));
+                            }}
+                            className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition"
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newPeriod = String(Object.keys(formData.extra_days || {}).length + 1);
+                          setFormData(prev => ({
+                            ...prev,
+                            extra_days: { ...prev.extra_days, [newPeriod]: 1 }
+                          }));
+                        }}
+                        className="px-4 py-2 bg-indigo-500/20 text-indigo-400 rounded-lg hover:bg-indigo-500/30 transition"
+                      >
+                        + Добавить период
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {formData.effect_type === 'override_tariff' && (
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">Тариф по промокоду</label>
+                    <select
+                      value={formData.override_tariff_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, override_tariff_id: e.target.value }))}
+                      className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="">Выберите тариф</option>
+                      {tariffs.map((tariff) => (
+                        <option key={tariff.id} value={tariff.id}>{tariff.name}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
 
@@ -558,81 +745,6 @@ export default function PromocodesPage() {
                     className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
                     placeholder="Безлимит"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">
-                    Дополнительные дни к подписке (по периодам)
-                    <span className="text-xs text-gray-500 ml-2">Укажите период в месяцах и количество дополнительных дней</span>
-                  </label>
-                  <div className="space-y-2">
-                    {Object.entries(formData.extra_days || {}).map(([period, days]) => (
-                      <div key={period} className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          value={period}
-                          onChange={(e) => {
-                            const newPeriod = e.target.value;
-                            if (newPeriod && parseInt(newPeriod) > 0) {
-                              const newExtraDays = { ...formData.extra_days };
-                              delete newExtraDays[period];
-                              newExtraDays[newPeriod] = days;
-                              setFormData(prev => ({ ...prev, extra_days: newExtraDays }));
-                            }
-                          }}
-                          className="w-24 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
-                          placeholder="Период"
-                        />
-                        <span className="text-gray-400">мес. →</span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={days}
-                          onChange={(e) => {
-                            const newDays = e.target.value ? parseInt(e.target.value) : 0;
-                            if (newDays > 0) {
-                              setFormData(prev => ({
-                                ...prev,
-                                extra_days: { ...prev.extra_days, [period]: newDays }
-                              }));
-                            } else {
-                              const newExtraDays = { ...formData.extra_days };
-                              delete newExtraDays[period];
-                              setFormData(prev => ({ ...prev, extra_days: newExtraDays }));
-                            }
-                          }}
-                          className="w-24 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-indigo-500"
-                          placeholder="Дней"
-                        />
-                        <span className="text-gray-400">дней</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newExtraDays = { ...formData.extra_days };
-                            delete newExtraDays[period];
-                            setFormData(prev => ({ ...prev, extra_days: newExtraDays }));
-                          }}
-                          className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition"
-                        >
-                          Удалить
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newPeriod = String(Object.keys(formData.extra_days || {}).length + 1);
-                        setFormData(prev => ({
-                          ...prev,
-                          extra_days: { ...prev.extra_days, [newPeriod]: 0 }
-                        }));
-                      }}
-                      className="px-4 py-2 bg-indigo-500/20 text-indigo-400 rounded-lg hover:bg-indigo-500/30 transition"
-                    >
-                      + Добавить период
-                    </button>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

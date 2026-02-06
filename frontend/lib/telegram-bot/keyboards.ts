@@ -116,6 +116,8 @@ export function getPaymentKeyboard(paymentUrl?: string): InlineKeyboard {
 export function getSuccessKeyboard(discordInvite?: string): InlineKeyboard {
   const buttons: InlineButton[][] = [];
 
+  buttons.push([{ text: '📖 Как начать работу в Сообществе', callback_data: 'how_to_start_community' }]);
+
   if (discordInvite) {
     buttons.push([{ text: '🎮 Перейти в Discord', url: discordInvite }]);
   }

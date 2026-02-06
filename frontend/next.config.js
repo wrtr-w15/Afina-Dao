@@ -6,8 +6,8 @@ const withNextIntl = require('next-intl/plugin')(
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Явный абсолютный корень для Turbopack (каталог frontend с package.json и node_modules)
-  turbopack: { root: path.resolve(__dirname) },
+  // В монорепо next лежит в корне (node_modules/next). Указываем корень монорепо, чтобы Turbopack нашёл next и собирал из frontend (cwd)
+  turbopack: { root: path.resolve(__dirname, '..') },
   // Явные алиасы для резолва @/ (Turbopack/Webpack)
   webpack: (config) => {
     config.resolve.alias = {
@@ -78,7 +78,8 @@ const nextConfig = {
               "connect-src 'self' https://api.telegram.org",
               "frame-ancestors 'self'",
               "base-uri 'self'",
-              "form-action 'self'"
+              "form-action 'self'",
+              "object-src 'none'"
             ].join('; ')
           },
           {
@@ -89,6 +90,18 @@ const nextConfig = {
               'geolocation=()',
               'interest-cohort=()'
             ].join(', ')
+          },
+          {
+            key: 'X-Permitted-Cross-Domain-Policies',
+            value: 'none'
+          },
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'same-origin'
+          },
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin'
           },
         ],
       },

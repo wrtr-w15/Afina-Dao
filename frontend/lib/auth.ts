@@ -1,45 +1,38 @@
 // Утилиты для работы с аутентификацией админки
+// Реальная аутентификация — по httpOnly cookie admin-session (проверяется middleware и API).
 
-export const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123'
-};
+/** Флаг сессии на клиенте (только для UI). Доступ к /admin защищён middleware по cookie. */
+const ADMIN_SESSION_KEY = 'admin_session_ok';
 
-export const ADMIN_TOKEN = 'admin_authenticated';
-
-// Проверка аутентификации на клиенте
-export const isAdminAuthenticated = (): boolean => {
+export function isAdminAuthenticated(): boolean {
   if (typeof window === 'undefined') return false;
-  
-  const token = localStorage.getItem('admin_token');
-  return token === ADMIN_TOKEN;
-};
+  return sessionStorage.getItem(ADMIN_SESSION_KEY) === '1';
+}
 
-// Получение текущего пользователя
-export const getCurrentAdmin = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  
-  return localStorage.getItem('admin_user');
-};
-
-// Выход из системы
-export const logoutAdmin = (): void => {
+/** Вызывать после успешного входа (редирект на /admin уже означает успех). */
+export function setAdminSessionFlag(): void {
   if (typeof window === 'undefined') return;
-  
-  localStorage.removeItem('admin_token');
-  localStorage.removeItem('admin_user');
-};
+  sessionStorage.setItem(ADMIN_SESSION_KEY, '1');
+}
 
-// Установка токена в cookies (для middleware)
-export const setAdminTokenInCookies = (token: string): void => {
-  if (typeof document === 'undefined') return;
-  
-  document.cookie = `admin_token=${token}; path=/; max-age=86400; SameSite=Strict`;
-};
+export function getCurrentAdmin(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('admin_user') ?? null;
+}
 
-// Удаление токена из cookies
-export const removeAdminTokenFromCookies = (): void => {
-  if (typeof document === 'undefined') return;
-  
-  document.cookie = 'admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-};
+/** Выход: сбрасывает сессию на сервере и редиректит на логин. */
+export async function logoutAdmin(redirectTo = '/admin/login'): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } finally {
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    localStorage.removeItem('admin_user');
+    window.location.href = redirectTo;
+  }
+}
+
+/** @deprecated Используйте logoutAdmin() — cookie admin-session сбрасывается через API. */
+export function removeAdminTokenFromCookies(): void {
+  // Ничего не делаем: реальная сессия — admin-session, очищается в logoutAdmin через /api/auth/logout
+}

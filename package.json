@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Afina DAO Wiki - Multi-language knowledge base platform",
   "private": true,
+  "overrides": {
+    "undici": "6.23.0"
+  },
   "workspaces": [
     "frontend"
   ],

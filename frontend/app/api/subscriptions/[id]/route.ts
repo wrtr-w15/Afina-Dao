@@ -213,8 +213,19 @@ export async function PUT(
 
     // Обрабатываем изменение статуса
     if (oldStatus !== newStatus) {
-      // Если подписка стала активной - выдаём доступы
+      // Если подписка стала активной - выдаём доступы и выставляем один актуальный тариф у пользователя
       if (newStatus === 'active' && oldStatus !== 'active') {
+        if (subscription.tariff_id) {
+          try {
+            await connection.execute('DELETE FROM user_available_tariffs WHERE user_id = ?', [subscription.user_id]);
+            await connection.execute(
+              'INSERT INTO user_available_tariffs (id, user_id, tariff_id) VALUES (?, ?, ?)',
+              [crypto.randomUUID(), subscription.user_id, subscription.tariff_id]
+            );
+          } catch (e) {
+            console.error('Error syncing user_available_tariffs:', e);
+          }
+        }
         // Проверяем, это продление или новая активация
         const isRenewal = oldStatus === 'expired' || oldStatus === 'cancelled';
         if (subscription.discord_id && !subscription.discord_role_granted) {
